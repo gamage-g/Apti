@@ -11,7 +11,6 @@ from app.db.connection import get_settings
 from app.apti.prompts import (
     CONSTITUTION,
     LECTURER, EXAMINER, GRADER, CARTOGRAPHER, SCHEDULER_ADVISOR, GATEKEEPER,
-    subject_context,
 )
 
 
@@ -84,8 +83,8 @@ async def generate_lesson(
     recent_struggles: list[str],
     subject_id: str = "mathematics",
 ) -> dict[str, Any]:
-    sub = subject_context(subject_id)
-    user = sub + "\n\n" + json.dumps({
+    user = json.dumps({
+        "subject": subject_id,
         "topic": topic,
         "skill": skill,
         "learner_level": learner_level,
@@ -101,8 +100,8 @@ async def generate_quiz(
     recent_question_prompts: list[str],
     subject_id: str = "mathematics",
 ) -> dict[str, Any]:
-    sub = subject_context(subject_id)
-    user = sub + "\n\n" + json.dumps({
+    user = json.dumps({
+        "subject": subject_id,
         "topic": topic,
         "lesson": lesson,
         "recent_question_prompts": recent_question_prompts,
@@ -115,8 +114,7 @@ async def grade_open_answers(
     subject_id: str = "mathematics",
 ) -> dict[str, Any]:
     """MCQ answers must NOT be sent here — grade those in code."""
-    sub = subject_context(subject_id)
-    user = sub + "\n\n" + json.dumps({"answers": question_answer_pairs})
+    user = json.dumps({"subject": subject_id, "answers": question_answer_pairs})
     return await _call_with_retry(GRADER, user, "grader")
 
 
@@ -125,8 +123,7 @@ async def generate_flashcards(
     skill_label: str,
     subject_id: str = "mathematics",
 ) -> dict[str, Any]:
-    sub = subject_context(subject_id)
-    user = sub + "\n\n" + json.dumps({"skill_id": skill_id, "skill_label": skill_label})
+    user = json.dumps({"subject": subject_id, "skill_id": skill_id, "skill_label": skill_label})
     return await _call_with_retry(CARTOGRAPHER, user, "cartographer")
 
 
@@ -135,8 +132,8 @@ async def advise_schedule(
     recent_performance: list[dict[str, Any]],
     subject_id: str = "mathematics",
 ) -> dict[str, Any]:
-    sub = subject_context(subject_id)
-    user = sub + "\n\n" + json.dumps({
+    user = json.dumps({
+        "subject": subject_id,
         "skill_graph": skill_graph,
         "recent_performance": recent_performance,
     })
@@ -148,6 +145,5 @@ async def gate_progression(
     session_results: dict[str, Any],
     subject_id: str = "mathematics",
 ) -> dict[str, Any]:
-    sub = subject_context(subject_id)
-    user = sub + "\n\n" + json.dumps({"skill_id": skill_id, "session_results": session_results})
+    user = json.dumps({"subject": subject_id, "skill_id": skill_id, "session_results": session_results})
     return await _call_with_retry(GATEKEEPER, user, "gatekeeper")
