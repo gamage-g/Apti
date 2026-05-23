@@ -274,7 +274,7 @@ async def submit_session(body: SubmitRequest):
         },
     )
 
-    # Unlock next skill if Gatekeeper approved progression
+    # Unlock next skill and generate flashcards for completed skill
     if unlock_decision.get("unlock"):
         await pool.execute(
             """
@@ -287,6 +287,25 @@ async def submit_session(body: SubmitRequest):
             """,
             skill_id,
         )
+        skill_row = await pool.fetchrow("SELECT label FROM skills WHERE id = $1", skill_id)
+        if skill_row:
+            try:
+                result = await apti.generate_flashcards(
+                    skill_id=skill_id,
+                    skill_label=skill_row["label"],
+                )
+                for card in result.get("cards", []):
+                    await pool.execute(
+                        """
+                        INSERT INTO cards (id, skill_id, front, back, interval_days, due_date)
+                        VALUES ($1, $2, $3, $4, $5, CURRENT_DATE)
+                        ON CONFLICT (id) DO NOTHING
+                        """,
+                        card["id"], skill_id, card["front"], card["back"],
+                        card.get("initial_interval_days", 1),
+                    )
+            except Exception:
+                pass  # flashcard generation is non-critical; session result still returns
 
     # Mark session complete
     await pool.execute(
