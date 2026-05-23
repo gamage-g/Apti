@@ -1,4 +1,4 @@
--- EngineIQ database schema
+-- Apti database schema
 -- Run once against your PostgreSQL database:
 --   psql $DATABASE_URL -f schema.sql
 

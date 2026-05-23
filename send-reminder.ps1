@@ -1,4 +1,4 @@
-# EngineIQ — daily study reminder sender
+# Apti — daily study reminder sender
 # Called by Windows Task Scheduler. Sends a Web Push to all subscribers.
 try {
     $r = Invoke-WebRequest -Uri "http://127.0.0.1:8000/api/push/send-reminder" `

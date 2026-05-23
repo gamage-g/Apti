@@ -73,7 +73,7 @@ async def send_reminder():
         return {"sent": 0, "failed": 0}
 
     payload = {
-        "title": "EngineIQ — Study Window",
+        "title": "Apti — Study Window",
         "body": "Your daily study session is ready. Keep the streak going.",
     }
 

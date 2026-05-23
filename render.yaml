@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: engineiq-api
+    name: apti-api
     runtime: python
     rootDir: backend
     buildCommand: pip install -r requirements.txt

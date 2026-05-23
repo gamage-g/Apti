@@ -1,4 +1,4 @@
-const CACHE = 'engineiq-v1';
+const CACHE = 'apti-v1';
 
 self.addEventListener('install', () => self.skipWaiting());
 self.addEventListener('activate', e => e.waitUntil(clients.claim()));
@@ -7,11 +7,11 @@ self.addEventListener('activate', e => e.waitUntil(clients.claim()));
 self.addEventListener('push', e => {
   const data = e.data?.json() ?? {};
   e.waitUntil(
-    self.registration.showNotification(data.title ?? 'EngineIQ', {
+    self.registration.showNotification(data.title ?? 'Apti', {
       body:               data.body ?? 'Time to study.',
       icon:               '/favicon.svg',
       badge:              '/favicon.svg',
-      tag:                'engineiq-reminder',
+      tag:                'apti-reminder',
       requireInteraction: false,
     })
   );

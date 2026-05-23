@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//mnt/c/Users/GAMAGE/engineiq/**)",
+      "Bash(.venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload)",
+      "Bash(curl -s http://127.0.0.1:8000/api/skills)",
+      "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\(f'skills loaded: {len\\(d[\\\\\"skills\\\\\"]\\)}'\\)\")"
+    ]
+  }
+}

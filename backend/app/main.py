@@ -14,7 +14,7 @@ async def lifespan(app: FastAPI):
     await close_pool()
 
 
-app = FastAPI(title="EngineIQ API", version="0.1.0", lifespan=lifespan)
+app = FastAPI(title="Apti API", version="0.1.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,

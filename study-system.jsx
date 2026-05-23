@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 
 /* ════════════════════════════════════════════════════════════
-   EngineIQ — Editorial / Academic study system
+   Apti — Editorial / Academic study system
    Light + Dark themes. Designed to feel like a typeset textbook.
    ════════════════════════════════════════════════════════════ */
 
@@ -470,7 +470,7 @@ function Dashboard({ setView, setActiveSkill, c, mode, setMode, skills, onEnterH
           justifyContent: "space-between", gap: 16, flexWrap: "wrap",
         }}>
           <p className="body" style={{fontSize:14, color:c.sub, margin:0}}>
-            Enable daily study reminders so EngineIQ can nudge you at your study window.
+            Enable daily study reminders so Apti can nudge you at your study window.
           </p>
           <button className="btn btn-accent" style={{fontSize:13, padding:"7px 18px", whiteSpace:"nowrap"}}
             onClick={enableReminders} disabled={notifState === "requesting"}>

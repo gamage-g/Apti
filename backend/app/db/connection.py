@@ -18,7 +18,7 @@ class Settings(BaseSettings):
     # VAPID keys for Web Push — base64-encoded PEM private key, raw public key
     vapid_private_key: str = ""
     vapid_public_key: str = ""
-    vapid_mailto: str = "mailto:admin@engineiq.app"
+    vapid_mailto: str = "mailto:admin@apti.app"
 
     class Config:
         env_file = ".env"
