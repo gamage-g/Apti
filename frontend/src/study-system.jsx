@@ -321,9 +321,9 @@ function Sidebar({ view, setView, c, mode, setMode, skills }) {
     <aside className="sidebar">
       <div style={{marginBottom:8}}>
         <div className="display" style={{fontSize:26, color:c.ink}}>
-          Engine<span style={{color:c.accent}}>IQ</span>
+          Ap<span style={{color:c.accent}}>ti</span>
         </div>
-        <div className="kicker" style={{marginTop:4}}>Academy of Engineering</div>
+        <div className="kicker" style={{marginTop:4}}>Adaptive Study System</div>
       </div>
 
       <div style={{height:2, background:c.rule, margin:"22px 0 24px"}}/>
