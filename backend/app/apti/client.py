@@ -11,6 +11,7 @@ from app.db.connection import get_settings
 from app.apti.prompts import (
     CONSTITUTION,
     LECTURER, EXAMINER, GRADER, CARTOGRAPHER, SCHEDULER_ADVISOR, GATEKEEPER,
+    subject_context,
 )
 
 
@@ -34,20 +35,14 @@ _ROLE_SETTINGS = {
 }
 
 
-async def _call_deepseek(
-    role_prompt: str,
-    user_message: str,
-    role: str,
-) -> dict[str, Any]:
+async def _call_deepseek(role_prompt: str, user_content: str, role: str) -> dict[str, Any]:
     """
-    Make one API call to DeepSeek. Returns parsed JSON dict.
+    One DeepSeek API call.
 
-    Message structure for prompt caching:
-      system  = CONSTITUTION  (identical on every call → cached across all roles)
-      user    = role_prompt + variable content  (role part is stable per role)
-
-    DeepSeek caches the longest matching prefix automatically; keeping CONSTITUTION
-    as the sole system message maximises the shared prefix across all six roles.
+    Message layout for prompt caching:
+      system = CONSTITUTION      (stable across every call → cached)
+      user   = role_prompt + subject context + variable data
+                (role_prompt is stable per role; subject context per (role, subject))
     """
     cfg = _ROLE_SETTINGS[role]
     payload = {
@@ -57,10 +52,9 @@ async def _call_deepseek(
         "max_tokens": cfg["max_tokens"],
         "messages": [
             {"role": "system", "content": CONSTITUTION},
-            {"role": "user",   "content": role_prompt + "\n\n" + user_message},
+            {"role": "user",   "content": role_prompt + "\n\n" + user_content},
         ],
     }
-
     async with httpx.AsyncClient(timeout=60) as client:
         resp = await client.post(
             f"{DEEPSEEK_BASE}/chat/completions",
@@ -68,16 +62,15 @@ async def _call_deepseek(
             json=payload,
         )
         resp.raise_for_status()
-
     raw = resp.json()["choices"][0]["message"]["content"]
     return json.loads(raw)
 
 
-async def _call_with_retry(role_prompt: str, user_message: str, role: str) -> dict[str, Any]:
+async def _call_with_retry(role_prompt: str, user_content: str, role: str) -> dict[str, Any]:
     try:
-        return await _call_deepseek(role_prompt, user_message, role)
+        return await _call_deepseek(role_prompt, user_content, role)
     except (ValueError, KeyError, json.JSONDecodeError):
-        stricter = user_message + "\n\nIMPORTANT: Return ONLY the JSON object. No text before or after."
+        stricter = user_content + "\n\nIMPORTANT: Return ONLY the JSON object. No text before or after."
         return await _call_deepseek(role_prompt, stricter, role)
 
 
@@ -89,8 +82,10 @@ async def generate_lesson(
     learner_level: str,
     unlocked_skills: list[str],
     recent_struggles: list[str],
+    subject_id: str = "mathematics",
 ) -> dict[str, Any]:
-    user = json.dumps({
+    sub = subject_context(subject_id)
+    user = sub + "\n\n" + json.dumps({
         "topic": topic,
         "skill": skill,
         "learner_level": learner_level,
@@ -104,8 +99,10 @@ async def generate_quiz(
     topic: str,
     lesson: dict[str, Any],
     recent_question_prompts: list[str],
+    subject_id: str = "mathematics",
 ) -> dict[str, Any]:
-    user = json.dumps({
+    sub = subject_context(subject_id)
+    user = sub + "\n\n" + json.dumps({
         "topic": topic,
         "lesson": lesson,
         "recent_question_prompts": recent_question_prompts,
@@ -115,22 +112,31 @@ async def generate_quiz(
 
 async def grade_open_answers(
     question_answer_pairs: list[dict[str, str]],
+    subject_id: str = "mathematics",
 ) -> dict[str, Any]:
     """MCQ answers must NOT be sent here — grade those in code."""
-    user = json.dumps({"answers": question_answer_pairs})
+    sub = subject_context(subject_id)
+    user = sub + "\n\n" + json.dumps({"answers": question_answer_pairs})
     return await _call_with_retry(GRADER, user, "grader")
 
 
-async def generate_flashcards(skill_id: str, skill_label: str) -> dict[str, Any]:
-    user = json.dumps({"skill_id": skill_id, "skill_label": skill_label})
+async def generate_flashcards(
+    skill_id: str,
+    skill_label: str,
+    subject_id: str = "mathematics",
+) -> dict[str, Any]:
+    sub = subject_context(subject_id)
+    user = sub + "\n\n" + json.dumps({"skill_id": skill_id, "skill_label": skill_label})
     return await _call_with_retry(CARTOGRAPHER, user, "cartographer")
 
 
 async def advise_schedule(
     skill_graph: list[dict[str, Any]],
     recent_performance: list[dict[str, Any]],
+    subject_id: str = "mathematics",
 ) -> dict[str, Any]:
-    user = json.dumps({
+    sub = subject_context(subject_id)
+    user = sub + "\n\n" + json.dumps({
         "skill_graph": skill_graph,
         "recent_performance": recent_performance,
     })
@@ -140,6 +146,8 @@ async def advise_schedule(
 async def gate_progression(
     skill_id: str,
     session_results: dict[str, Any],
+    subject_id: str = "mathematics",
 ) -> dict[str, Any]:
-    user = json.dumps({"skill_id": skill_id, "session_results": session_results})
+    sub = subject_context(subject_id)
+    user = sub + "\n\n" + json.dumps({"skill_id": skill_id, "session_results": session_results})
     return await _call_with_retry(GATEKEEPER, user, "gatekeeper")

@@ -209,5 +209,29 @@ no preamble, no commentary outside the JSON.
 """.strip()
 
 
+SUBJECT_REGISTERS: dict[str, str] = {
+    "mathematics": (
+        "SUBJECT: Mathematics. "
+        "Use numeric examples, algebraic notation, and step-by-step derivations. "
+        "Connect to physics and engineering (forces, currents, signals) where natural."
+    ),
+    "electrical_engineering": (
+        "SUBJECT: Electrical Engineering. "
+        "Use SI units (V, A, Ω, F, H, W), real component values, and circuit descriptions. "
+        "Ground every concept in a practical circuit. Analyse with KVL, KCL, phasors, or Laplace as appropriate."
+    ),
+    "programming": (
+        "SUBJECT: Programming (Python). "
+        "Include short, runnable Python code snippets. "
+        "Prefer concrete input/output examples over abstract prose. "
+        "Use engineering problems as the domain for worked examples."
+    ),
+}
+
+
+def subject_context(subject_id: str) -> str:
+    return SUBJECT_REGISTERS.get(subject_id, SUBJECT_REGISTERS["mathematics"])
+
+
 def build_system_prompt(role: str) -> str:
     return CONSTITUTION + "\n\n" + role

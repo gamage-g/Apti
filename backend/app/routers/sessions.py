@@ -103,17 +103,46 @@ async def _update_mastery(pool, skill_id: str, delta: int) -> int:
 async def start_session(body: StartRequest):
     pool = get_pool()
 
-    # Verify skill exists and is unlocked
-    skill = await pool.fetchrow(
-        "SELECT id, label, locked FROM skills WHERE id = $1", body.skill_id
-    )
+    # Verify skill exists and is unlocked (locked computed from prerequisites + mastery)
+    skill = await pool.fetchrow("""
+        SELECT s.id, s.label, s.subject_id,
+        (
+            EXISTS (
+                SELECT 1 FROM prerequisites p
+                LEFT JOIN mastery m ON m.skill_id = p.required_skill_id AND m.sub_skill_id IS NULL
+                WHERE p.gated_skill_id = s.id AND COALESCE(m.score, 0) < p.mastery_threshold
+            )
+            OR EXISTS (
+                SELECT 1 FROM prerequisites p
+                LEFT JOIN mastery m ON m.skill_id = p.required_skill_id AND m.sub_skill_id IS NULL
+                WHERE p.gated_subject_id = s.subject_id AND COALESCE(m.score, 0) < p.mastery_threshold
+            )
+        ) AS locked
+        FROM skills s WHERE s.id = $1
+    """, body.skill_id)
     if not skill:
         raise HTTPException(404, f"Skill '{body.skill_id}' not found")
     if skill["locked"]:
         raise HTTPException(403, f"Skill '{body.skill_id}' is locked")
 
+    subject_id = skill["subject_id"] or "mathematics"
+
     # Gather context for the Lecturer
-    unlocked = await pool.fetch("SELECT id FROM skills WHERE locked = false")
+    unlocked = await pool.fetch("""
+        SELECT s.id FROM skills s
+        WHERE NOT (
+            EXISTS (
+                SELECT 1 FROM prerequisites p
+                LEFT JOIN mastery m ON m.skill_id = p.required_skill_id AND m.sub_skill_id IS NULL
+                WHERE p.gated_skill_id = s.id AND COALESCE(m.score, 0) < p.mastery_threshold
+            )
+            OR EXISTS (
+                SELECT 1 FROM prerequisites p
+                LEFT JOIN mastery m ON m.skill_id = p.required_skill_id AND m.sub_skill_id IS NULL
+                WHERE p.gated_subject_id = s.subject_id AND COALESCE(m.score, 0) < p.mastery_threshold
+            )
+        )
+    """)
     unlocked_ids = [r["id"] for r in unlocked]
     recent_struggles = await _get_recent_struggles(pool, body.skill_id)
 
@@ -125,6 +154,7 @@ async def start_session(body: StartRequest):
             learner_level="foundational",
             unlocked_skills=unlocked_ids,
             recent_struggles=recent_struggles,
+            subject_id=subject_id,
         )
     except Exception as e:
         raise HTTPException(502, f"AI service error: {e}")
@@ -151,7 +181,9 @@ async def generate_quiz(body: dict):
     pool = get_pool()
 
     session = await pool.fetchrow(
-        "SELECT skill_id, topic, lesson_json FROM sessions WHERE id = $1",
+        "SELECT sess.skill_id, sess.topic, sess.lesson_json, sk.subject_id"
+        " FROM sessions sess JOIN skills sk ON sk.id = sess.skill_id"
+        " WHERE sess.id = $1",
         session_id,
     )
     if not session:
@@ -164,6 +196,7 @@ async def generate_quiz(body: dict):
             topic=session["topic"],
             lesson=session["lesson_json"],
             recent_question_prompts=recent_prompts,
+            subject_id=session["subject_id"] or "mathematics",
         )
     except Exception as e:
         raise HTTPException(502, f"AI service error: {e}")
@@ -197,12 +230,16 @@ async def submit_session(body: SubmitRequest):
     pool = get_pool()
 
     session = await pool.fetchrow(
-        "SELECT skill_id FROM sessions WHERE id = $1", body.session_id
+        "SELECT sess.skill_id, sk.subject_id"
+        " FROM sessions sess JOIN skills sk ON sk.id = sess.skill_id"
+        " WHERE sess.id = $1",
+        body.session_id,
     )
     if not session:
         raise HTTPException(404, "Session not found")
 
-    skill_id = session["skill_id"]
+    skill_id   = session["skill_id"]
+    subject_id = session["subject_id"] or "mathematics"
 
     # Load questions to know which are MCQ vs open
     q_rows = await pool.fetch(
@@ -243,7 +280,7 @@ async def submit_session(body: SubmitRequest):
     # Grade open answers via LLM
     open_results: list[GradedOpen] = []
     if open_pairs:
-        graded = await apti.grade_open_answers(open_pairs)
+        graded = await apti.grade_open_answers(open_pairs, subject_id=subject_id)
         open_results = graded.get("results", [])
         for r in open_results:
             await pool.execute(
@@ -272,21 +309,12 @@ async def submit_session(body: SubmitRequest):
             "mcq_results": mcq_results,
             "mastery_after": new_mastery,
         },
+        subject_id=subject_id,
     )
 
-    # Unlock next skill and generate flashcards for completed skill
+    # Generate flashcards when Gatekeeper approves graduation.
+    # Unlock state is now computed from mastery + prerequisites — no DB column to flip.
     if unlock_decision.get("unlock"):
-        await pool.execute(
-            """
-            UPDATE skills SET locked = false
-            WHERE sort_order = (
-                SELECT MIN(sort_order) FROM skills
-                WHERE locked = true
-                  AND sort_order > (SELECT sort_order FROM skills WHERE id = $1)
-            )
-            """,
-            skill_id,
-        )
         skill_row = await pool.fetchrow("SELECT label FROM skills WHERE id = $1", skill_id)
         if skill_row:
             try:

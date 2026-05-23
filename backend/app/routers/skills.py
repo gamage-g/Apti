@@ -16,13 +16,29 @@ async def list_skills():
     skill_rows = await pool.fetch(
         """
         SELECT
-            s.id, s.num, s.label, s.accent_key, s.locked, s.sort_order,
+            s.id, s.num, s.label, s.accent_key, s.subject_id, s.sort_order,
             COALESCE(MAX(m.score), 0)                                      AS mastery,
-            COUNT(DISTINCT c.id) FILTER (WHERE c.due_date <= CURRENT_DATE) AS due
+            COUNT(DISTINCT c.id) FILTER (WHERE c.due_date <= CURRENT_DATE) AS due,
+            (
+                EXISTS (
+                    SELECT 1 FROM prerequisites p
+                    LEFT JOIN mastery m2
+                           ON m2.skill_id = p.required_skill_id AND m2.sub_skill_id IS NULL
+                    WHERE p.gated_skill_id = s.id
+                      AND COALESCE(m2.score, 0) < p.mastery_threshold
+                )
+                OR EXISTS (
+                    SELECT 1 FROM prerequisites p
+                    LEFT JOIN mastery m2
+                           ON m2.skill_id = p.required_skill_id AND m2.sub_skill_id IS NULL
+                    WHERE p.gated_subject_id = s.subject_id
+                      AND COALESCE(m2.score, 0) < p.mastery_threshold
+                )
+            )                                                              AS locked
         FROM skills s
         LEFT JOIN mastery m ON m.skill_id = s.id AND m.sub_skill_id IS NULL
         LEFT JOIN cards   c ON c.skill_id = s.id
-        GROUP BY s.id, s.num, s.label, s.accent_key, s.locked, s.sort_order
+        GROUP BY s.id, s.num, s.label, s.accent_key, s.subject_id, s.sort_order
         ORDER BY s.sort_order
         """
     )
@@ -50,6 +66,7 @@ async def list_skills():
             "num":        row["num"],
             "label":      row["label"],
             "accentKey":  row["accent_key"],
+            "subjectId":  row["subject_id"],
             "locked":     row["locked"],
             "mastery":    row["mastery"],
             "due":        row["due"],

@@ -313,7 +313,13 @@ const NAV = [
   { id:"progress",   num:"04", label:"Progress" },
 ];
 
-function Sidebar({ view, setView, c, mode, setMode, skills }) {
+const SUBJECT_COLORS = {
+  mathematics:            "accent",
+  electrical_engineering: "blue",
+  programming:            "green",
+};
+
+function Sidebar({ view, setView, c, mode, setMode, skills, subjects, activeSubject, setActiveSubject }) {
   const overall = skills.length
     ? Math.round(skills.reduce((a,s)=>a+s.mastery,0)/skills.length)
     : 0;
@@ -336,6 +342,31 @@ function Sidebar({ view, setView, c, mode, setMode, skills }) {
           </button>
         ))}
       </nav>
+
+      {subjects.length > 0 && (
+        <div style={{borderTop:`1px solid ${c.line}`, paddingTop:16, marginBottom:16}}>
+          <div className="kicker" style={{paddingLeft:14, marginBottom:10}}>Subject</div>
+          {subjects.map(s => {
+            const col = c[SUBJECT_COLORS[s.id]] || c.accent;
+            const active = s.id === activeSubject;
+            return (
+              <button key={s.id} onClick={()=>{setActiveSubject(s.id); setView("dashboard");}} style={{
+                display:"flex", alignItems:"center", gap:10, width:"100%",
+                background: active ? col+"18" : "none",
+                border:"none", borderRadius:3, padding:"8px 14px",
+                cursor:"pointer", textAlign:"left",
+                borderLeft: active ? `3px solid ${col}` : "3px solid transparent",
+                transition:"all 0.15s",
+              }}>
+                <div style={{flex:1}}>
+                  <div className="serif-h" style={{fontSize:13, color:active?col:c.sub, lineHeight:1.2}}>{s.name}</div>
+                  <div className="mono" style={{fontSize:9, color:c.faint, marginTop:2}}>{s.mastery}% mastery</div>
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      )}
 
       <div style={{
         display:"flex", alignItems:"center", gap:10, padding:"12px 14px",
@@ -394,7 +425,7 @@ function BottomNav({ view, setView, c }) {
 }
 
 /* ─── Dashboard ───────────────────────────────────────────────── */
-function Dashboard({ setView, setActiveSkill, c, mode, setMode, skills, onEnterHall }) {
+function Dashboard({ setView, setActiveSkill, c, mode, setMode, skills, subjects, activeSubject, setActiveSubject, onEnterHall }) {
   const [sessions,     setSessions]     = useState([]);
   const [streak,       setStreak]       = useState(null);
   const [notifState,   setNotifState]   = useState("idle"); // idle | requesting | granted | denied | unsupported
@@ -445,7 +476,7 @@ function Dashboard({ setView, setActiveSkill, c, mode, setMode, skills, onEnterH
         <div className="header-rule">
           <div style={{display:"flex", justifyContent:"space-between", alignItems:"flex-start", flexWrap:"wrap", gap:12}}>
             <div>
-              <div className="kicker">Vol. I · Foundational Mathematics</div>
+              <div className="kicker">{subjects.find(s=>s.id===activeSubject)?.name ?? "Curriculum"}</div>
               <h1 className="display" style={{fontSize:46, marginTop:10, color:c.ink}}>
                 Good morning,<br/>Engineer.
               </h1>
@@ -509,18 +540,40 @@ function Dashboard({ setView, setActiveSkill, c, mode, setMode, skills, onEnterH
               </div>
             )}
 
-            <div style={{display:"flex", alignItems:"baseline", justifyContent:"space-between", marginBottom:16, borderBottom:`2px solid ${c.rule}`, paddingBottom:10}}>
-              <h2 className="serif-h" style={{fontSize:24, color:c.ink}}>The Curriculum</h2>
-              <span className="kicker">Eight Chapters</span>
+            {/* Subject tabs */}
+            {subjects.length > 0 && (
+              <div style={{display:"flex", gap:0, marginBottom:20, borderBottom:`2px solid ${c.rule}`}}>
+                {subjects.map(s => {
+                  const col = c[SUBJECT_COLORS[s.id]] || c.accent;
+                  const active = s.id === activeSubject;
+                  return (
+                    <button key={s.id} onClick={()=>setActiveSubject(s.id)} style={{
+                      background:"none", border:"none", cursor:"pointer",
+                      padding:"10px 20px 12px", fontSize:14,
+                      fontFamily:"'Newsreader',serif", fontWeight: active ? 600 : 400,
+                      color: active ? col : c.sub,
+                      borderBottom: active ? `2px solid ${col}` : "2px solid transparent",
+                      marginBottom:-2, transition:"all 0.15s",
+                    }}>{s.name}</button>
+                  );
+                })}
+              </div>
+            )}
+
+            <div style={{display:"flex", alignItems:"baseline", justifyContent:"space-between", marginBottom:16, borderBottom:`1px solid ${c.line}`, paddingBottom:10}}>
+              <h2 className="serif-h" style={{fontSize:20, color:c.ink}}>
+                {subjects.find(s=>s.id===activeSubject)?.name ?? "Skills"}
+              </h2>
+              <span className="kicker">{(subjects.find(s=>s.id===activeSubject)?.skills||[]).length} chapters</span>
             </div>
 
             <div className="paper skill-list" style={{boxShadow:c.shadow}}>
-              {skills.map(skill=>{
+              {(subjects.find(s=>s.id===activeSubject)?.skills || skills.filter(s=>s.subjectId===activeSubject || !s.subjectId)).map(skill=>{
                 const ac = c[skill.accentKey] || c.accent;
                 return (
                   <div key={skill.id}
                     className={`skill-row ${skill.locked?"":"unlocked"}`}
-                    onClick={()=>{ if(!skill.locked){ setActiveSkill(skill); setView("skill"); }}}
+                    onClick={()=>{ if(!skill.locked){ setActiveSkill({...skill, subs:skill.subs||[], subMastery:skill.subMastery||[], subIds:skill.subIds||[]}); setView("skill"); }}}
                     style={{opacity:skill.locked?0.4:1, cursor:skill.locked?"default":"pointer"}}>
                     <div className="display" style={{fontSize:28, color:skill.locked?c.faint:ac, width:52, flexShrink:0, lineHeight:1}}>
                       {skill.locked ? "·" : skill.num}
@@ -1329,27 +1382,34 @@ function Progress({ c, skills }) {
 
 /* ─── Root ────────────────────────────────────────────────────── */
 export default function App() {
-  const [mode,        setMode]        = useState("light");
-  const [view,        setView]        = useState("dashboard");
-  const [activeSkill, setActiveSkill] = useState(null);
-  const [skills,      setSkills]      = useState([]);
-  const [refreshKey,  setRefreshKey]  = useState(0);
+  const [mode,          setMode]          = useState("light");
+  const [view,          setView]          = useState("dashboard");
+  const [activeSkill,   setActiveSkill]   = useState(null);
+  const [skills,        setSkills]        = useState([]);
+  const [subjects,      setSubjects]      = useState([]);
+  const [activeSubject, setActiveSubject] = useState("mathematics");
+  const [refreshKey,    setRefreshKey]    = useState(0);
   const c = THEMES[mode];
 
-  const fetchSkills = () => {
+  const fetchData = () => {
     apiFetch("/api/skills")
       .then(d => setSkills(d.skills || []))
       .catch(console.error);
+    apiFetch("/api/subjects")
+      .then(d => setSubjects(d.subjects || []))
+      .catch(console.error);
   };
 
-  useEffect(fetchSkills, [refreshKey]);
+  useEffect(fetchData, [refreshKey]);
+
+  const subjectSkills = subjects.find(s => s.id === activeSubject)?.skills || [];
 
   const handleEnterHall = () => {
     let skill = activeSkill;
-    if (!skill) {
-      skill = skills.find(s => !s.locked);
+    if (!skill || skill.subjectId !== activeSubject) {
+      skill = subjectSkills.find(s => !s.locked);
       if (!skill) return;
-      setActiveSkill(skill);
+      setActiveSkill({...skill, subs: [], subMastery: [], subIds: []});
     }
     setView("session");
   };
@@ -1359,13 +1419,17 @@ export default function App() {
       <style>{buildCSS(c)}</style>
       <div className="root">
         <div className="shell">
-          <Sidebar view={view} setView={setView} c={c} mode={mode} setMode={setMode} skills={skills}/>
+          <Sidebar
+            view={view} setView={setView} c={c} mode={mode} setMode={setMode}
+            skills={skills} subjects={subjects}
+            activeSubject={activeSubject} setActiveSubject={setActiveSubject}
+          />
           <main className="main">
-            {view==="dashboard"  && <Dashboard setView={setView} setActiveSkill={setActiveSkill} c={c} mode={mode} setMode={setMode} skills={skills} onEnterHall={handleEnterHall}/>}
+            {view==="dashboard"  && <Dashboard setView={setView} setActiveSkill={setActiveSkill} c={c} mode={mode} setMode={setMode} skills={skills} subjects={subjects} activeSubject={activeSubject} setActiveSubject={setActiveSubject} onEnterHall={handleEnterHall}/>}
             {view==="skill"      && <SkillDetail skill={activeSkill} setView={setView} c={c} onEnterHall={handleEnterHall}/>}
             {view==="session"    && <StudyHall setView={setView} c={c} activeSkill={activeSkill} onComplete={()=>setRefreshKey(k=>k+1)}/>}
             {view==="flashcards" && <Flashcards setView={setView} c={c}/>}
-            {view==="progress"   && <Progress c={c} skills={skills}/>}
+            {view==="progress"   && <Progress c={c} skills={skills} subjects={subjects}/>}
           </main>
           <BottomNav view={view} setView={setView} c={c}/>
         </div>

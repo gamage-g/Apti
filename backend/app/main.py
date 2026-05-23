@@ -4,7 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.db.connection import init_pool, close_pool, get_settings
-from app.routers import sessions, reviews, skills, push
+from app.routers import sessions, reviews, skills, push, subjects
 
 
 @asynccontextmanager
@@ -28,6 +28,7 @@ app.include_router(sessions.router)
 app.include_router(reviews.router)
 app.include_router(skills.router)
 app.include_router(push.router)
+app.include_router(subjects.router)
 
 
 @app.get("/health")
