@@ -1,0 +1,12 @@
+{
+  "name": "EngineIQ",
+  "short_name": "EngineIQ",
+  "description": "Adaptive engineering mathematics study system",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#F4F1EA",
+  "theme_color": "#9A2A1E",
+  "icons": [
+    { "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}
