@@ -479,7 +479,7 @@ function Dashboard({ setView, setActiveSkill, c, mode, setMode, skills, subjects
             <div>
               <div className="kicker">{subjects.find(s=>s.id===activeSubject)?.name ?? "Curriculum"}</div>
               <h1 className="display" style={{fontSize:46, marginTop:10, color:c.ink}}>
-                Good morning,<br/>Engineer.
+                {(() => { const h = new Date().getHours(); return h < 12 ? "Good morning," : h < 17 ? "Good afternoon," : "Good evening,"; })()}<br/>Engineer.
               </h1>
             </div>
             <div className="mono" style={{fontSize:12, color:c.faint, textAlign:"right", paddingTop:6}}>
