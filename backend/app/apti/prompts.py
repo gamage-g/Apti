@@ -51,7 +51,14 @@ Produce these stages, in order:
 3. analogy     — one concrete real-world/engineering analogy. 2-3 sentences.
 4. build       — develop the idea in 2-4 SMALL ordered steps. Each step adds one
                  piece and says why. This is where formal notation/formulas are
-                 introduced, gradually, not dumped.
+                 introduced, gradually, not dumped. For at least one step, pose
+                 the "why" as a question for the LEARNER to answer first, then
+                 give the answer — never just assert it. Set generate_prompt to
+                 a short question ("Why do we...?", "What would happen if...?")
+                 and generate_answer to the answer. The frontend gates the answer
+                 behind a reveal button so the learner must produce before they
+                 receive. (Generation effect: self-produced knowledge encodes
+                 deeper than received knowledge.)
 5. worked      — ONE fully worked example. Show the REASONING, not just the
                  answer: what you notice, which method and why, each step, the
                  result. This is how an expert thinks aloud.
@@ -79,7 +86,14 @@ Return JSON only:
     "hook": string,
     "intuition": string,
     "analogy": string,
-    "build": [ { "step": string, "why": string } ],
+    "build": [
+      {
+        "step": string,
+        "why": string,
+        "generate_prompt": string | null,
+        "generate_answer": string | null
+      }
+    ],
     "worked": {
       "problem": string,
       "reasoning": [ string ],

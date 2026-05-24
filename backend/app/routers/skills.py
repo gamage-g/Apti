@@ -3,6 +3,8 @@ Skills endpoints: list all skills with live mastery + due counts,
 and recent session history for the dashboard.
 """
 
+from datetime import date, timedelta
+
 from fastapi import APIRouter
 from app.db.connection import get_pool
 
@@ -148,7 +150,6 @@ async def get_streak():
     if not rows:
         return {"streak": 0}
 
-    from datetime import date, timedelta
     today = date.today()
     streak = 0
     expected = today

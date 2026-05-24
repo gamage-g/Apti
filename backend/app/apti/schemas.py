@@ -9,6 +9,8 @@ from pydantic import BaseModel
 class BuildStep(BaseModel):
     step: str
     why: str
+    generate_prompt: str | None = None
+    generate_answer: str | None = None
 
 
 class WorkedExample(BaseModel):
@@ -81,3 +83,26 @@ class GradeResult(BaseModel):
 
 class GradeResponse(BaseModel):
     results: list[GradeResult]
+
+
+# ─── Cartographer schemas ─────────────────────────────────────────────────────
+
+class CartographerCard(BaseModel):
+    id: str
+    skill: str
+    front: str
+    back: str
+    initial_interval_days: int = 1
+
+
+class CartographerResponse(BaseModel):
+    cards: list[CartographerCard]
+
+
+# ─── Gatekeeper schemas ───────────────────────────────────────────────────────
+
+class GatekeeperResponse(BaseModel):
+    unlock: bool
+    confidence: float
+    message: str
+    focus_if_held: list[str] = []

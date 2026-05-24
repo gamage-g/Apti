@@ -5,13 +5,14 @@ Session endpoints: start lesson → generate quiz → submit answers.
 import json
 import uuid
 from datetime import datetime, timezone
+from typing import Literal
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, ValidationError
 
 from app.db.connection import get_pool
 from app.apti import client as apti
-from app.apti.schemas import StagedLesson, Quiz, GradeResponse
+from app.apti.schemas import StagedLesson, Quiz, GradeResponse, CartographerResponse, GatekeeperResponse
 from app.scheduler.sm2 import mastery_delta, GradedOpen, GradedMCQ
 
 router = APIRouter(prefix="/api/session", tags=["session"])
@@ -32,7 +33,7 @@ class AnswerSubmission(BaseModel):
 class SubmitRequest(BaseModel):
     session_id: str
     answers: list[AnswerSubmission]
-    practice_outcome: str = "unaided"  # unaided | hint_used | solution_revealed
+    practice_outcome: Literal["unaided", "hint_used", "solution_revealed"] = "unaided"
 
 
 # ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -375,7 +376,7 @@ async def submit_session(body: SubmitRequest):
     # one lucky session should not be enough.
     completed_before = await _get_completed_session_count(pool, skill_id)
     if completed_before >= 1:
-        unlock_decision = await apti.gate_progression(
+        raw_gate = await apti.gate_progression(
             skill_id=skill_id,
             session_results={
                 "open_results": open_results,
@@ -385,6 +386,11 @@ async def submit_session(body: SubmitRequest):
             },
             subject_id=subject_id,
         )
+        try:
+            GatekeeperResponse.model_validate(raw_gate)
+        except ValidationError as e:
+            raise HTTPException(502, f"Gatekeeper schema mismatch: {e}")
+        unlock_decision = raw_gate
     else:
         unlock_decision = {
             "unlock": False,
@@ -396,13 +402,15 @@ async def submit_session(body: SubmitRequest):
     # Generate flashcards when Gatekeeper approves graduation.
     # Unlock state is now computed from mastery + prerequisites — no DB column to flip.
     if unlock_decision.get("unlock"):
-        skill_row = await pool.fetchrow("SELECT label FROM skills WHERE id = $1", skill_id)
+        skill_row = await pool.fetchrow("SELECT label, subject_id FROM skills WHERE id = $1", skill_id)
         if skill_row:
             try:
                 result = await apti.generate_flashcards(
                     skill_id=skill_id,
                     skill_label=skill_row["label"],
+                    subject_id=skill_row["subject_id"] or subject_id,
                 )
+                CartographerResponse.model_validate(result)
                 for card in result.get("cards", []):
                     await pool.execute(
                         """

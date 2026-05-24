@@ -61,67 +61,56 @@ UPDATE skills SET subject_id = 'mathematics' WHERE subject_id IS NULL;
 
 -- ── EE skills (shallow skeleton — no lesson content yet) ──────────────────────
 
-INSERT INTO skills (id, num, label, accent_key, locked, sort_order, subject_id) VALUES
-    ('ee-dc-circuits',     '01', 'DC Circuits',      'blue', false, 101, 'electrical_engineering'),
-    ('ee-ac-circuits',     '02', 'AC Circuits',      'blue', false, 102, 'electrical_engineering'),
-    ('ee-circuit-analysis','03', 'Circuit Analysis', 'blue', false, 103, 'electrical_engineering'),
-    ('ee-electromagnetism','04', 'Electromagnetism', 'blue', false, 104, 'electrical_engineering'),
-    ('ee-signals',         '05', 'Signals',          'blue', false, 105, 'electrical_engineering')
+INSERT INTO skills (id, num, label, accent_key, sort_order, subject_id) VALUES
+    ('ee-dc-circuits',     '01', 'DC Circuits',      'blue', 101, 'electrical_engineering'),
+    ('ee-ac-circuits',     '02', 'AC Circuits',      'blue', 102, 'electrical_engineering'),
+    ('ee-circuit-analysis','03', 'Circuit Analysis', 'blue', 103, 'electrical_engineering'),
+    ('ee-electromagnetism','04', 'Electromagnetism', 'blue', 104, 'electrical_engineering'),
+    ('ee-signals',         '05', 'Signals',          'blue', 105, 'electrical_engineering')
 ON CONFLICT (id) DO NOTHING;
 
 -- ── Programming skills ────────────────────────────────────────────────────────
 
-INSERT INTO skills (id, num, label, accent_key, locked, sort_order, subject_id) VALUES
-    ('prog-python-basics',   '01', 'Python Basics',    'green', false, 201, 'programming'),
-    ('prog-data-structures', '02', 'Data Structures',  'green', false, 202, 'programming'),
-    ('prog-algorithms',      '03', 'Algorithms',       'green', false, 203, 'programming'),
-    ('prog-projects',        '04', 'Projects',         'green', false, 204, 'programming')
+INSERT INTO skills (id, num, label, accent_key, sort_order, subject_id) VALUES
+    ('prog-python-basics',   'Py.I',   'Python Basics',   'green', 201, 'programming'),
+    ('prog-data-structures', 'Py.II',  'Data Structures', 'green', 202, 'programming'),
+    ('prog-algorithms',      'Py.III', 'Algorithms',      'green', 203, 'programming'),
+    ('prog-projects',        'Py.IV',  'Projects',        'green', 204, 'programming')
 ON CONFLICT (id) DO NOTHING;
 
 -- ── Prerequisite graph ────────────────────────────────────────────────────────
 
--- Mathematics sequential chain
-INSERT INTO prerequisites (gated_skill_id, required_skill_id, mastery_threshold) VALUES
-    -- algebra unlocks after arithmetic
-    ('algebra',            'arithmetic', 70),
-    -- trig needs algebra
-    ('trig',               'algebra',    70),
-    -- vectors needs algebra
-    ('vectors',            'algebra',    70),
-    -- calculus needs trig (trig implies algebra)
-    ('calculus',           'trig',       70),
-    -- linalg needs calculus
-    ('linalg',             'calculus',   70),
-    ('linalg',             'vectors',    70),
-    -- diffeq needs linalg (which implies calculus)
-    ('diffeq',             'linalg',     70),
-    -- prob needs algebra
-    ('prob',               'algebra',    70)
+-- Mathematics chain — matches schema.sql prerequisite seed exactly
+INSERT INTO prerequisites (gated_skill_id, gated_subject_id, required_skill_id, mastery_threshold) VALUES
+    -- Calculus: requires Algebra ≥ 70
+    ('calculus',  NULL, 'algebra',  70),
+    -- Linear Algebra: requires Calculus ≥ 70 AND Vectors ≥ 70
+    ('linalg',    NULL, 'calculus', 70),
+    ('linalg',    NULL, 'vectors',  70),
+    -- Differential Equations: requires Calculus ≥ 70
+    ('diffeq',    NULL, 'calculus', 70),
+    -- Probability & Statistics: requires Algebra ≥ 70
+    ('prob',      NULL, 'algebra',  70)
 ON CONFLICT DO NOTHING;
 
 -- Electrical Engineering — gated behind relevant maths
-INSERT INTO prerequisites (gated_skill_id, required_skill_id, mastery_threshold) VALUES
-    -- DC Circuits: basic algebra
-    ('ee-dc-circuits',      'algebra',   50),
-    -- AC Circuits: trigonometry (phasors) + DC Circuits mastered
-    ('ee-ac-circuits',      'trig',      60),
-    ('ee-ac-circuits',      'ee-dc-circuits', 60),
-    -- Circuit Analysis: algebra + calculus (Laplace, transients)
-    ('ee-circuit-analysis', 'algebra',   70),
-    ('ee-circuit-analysis', 'calculus',  70),
-    -- Electromagnetism: calculus + vectors (field theory)
-    ('ee-electromagnetism', 'calculus',  70),
-    ('ee-electromagnetism', 'vectors',   70),
-    -- Signals: trigonometry + calculus (Fourier)
-    ('ee-signals',          'trig',      70),
-    ('ee-signals',          'calculus',  70)
+INSERT INTO prerequisites (gated_skill_id, gated_subject_id, required_skill_id, mastery_threshold) VALUES
+    ('ee-dc-circuits',      NULL, 'algebra',           50),
+    ('ee-ac-circuits',      NULL, 'trig',              60),
+    ('ee-ac-circuits',      NULL, 'ee-dc-circuits',    60),
+    ('ee-circuit-analysis', NULL, 'algebra',           70),
+    ('ee-circuit-analysis', NULL, 'calculus',          70),
+    ('ee-electromagnetism', NULL, 'calculus',          70),
+    ('ee-electromagnetism', NULL, 'vectors',           70),
+    ('ee-signals',          NULL, 'trig',              70),
+    ('ee-signals',          NULL, 'calculus',          70)
 ON CONFLICT DO NOTHING;
 
 -- Programming: within-track dependencies
-INSERT INTO prerequisites (gated_skill_id, required_skill_id, mastery_threshold) VALUES
-    ('prog-data-structures', 'prog-python-basics',   70),
-    ('prog-algorithms',      'prog-data-structures', 70),
-    ('prog-projects',        'prog-algorithms',      70)
+INSERT INTO prerequisites (gated_skill_id, gated_subject_id, required_skill_id, mastery_threshold) VALUES
+    ('prog-data-structures', NULL, 'prog-python-basics',   70),
+    ('prog-algorithms',      NULL, 'prog-data-structures', 70),
+    ('prog-projects',        NULL, 'prog-algorithms',      70)
 ON CONFLICT DO NOTHING;
 """
 

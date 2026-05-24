@@ -7,6 +7,42 @@ Apti is powered by DeepSeek under the hood, but the *personality, behaviour, and
 
 ---
 
+## 0. Learning Philosophy — Why the Lesson Is Shaped the Way It Is
+
+Every structural choice in Apti's lesson format maps to a specific finding in cognitive science. This section is the "why" behind the design so future changes don't accidentally undo it.
+
+### Five encoding principles
+
+**1. Levels of processing (Craik & Lockhart, 1972)**
+Shallow processing (recognising a word) produces weaker memory than deep processing (explaining its meaning, connecting it to something else). The 8-stage lesson structure forces progressively deeper engagement: from *hook* (interest → attention) through *intuition* and *analogy* (meaning-making) to *worked* (expert reasoning) and *practice* (self-application). Reading a wall of text is shallow; moving through these stages forces depth.
+
+**2. Elaborative encoding**
+New knowledge sticks when connected to existing knowledge. The *analogy* stage (always engineering-grounded) and *connections* stage (explicit "this links to / this unlocks") are both elaborative encoding moves. The constitution's "intuition first" rule is also elaborative — leading with meaning before notation gives the formal rule something to attach to.
+
+**3. Generation effect (Slamecka & Graf, 1978)**
+Self-produced information is retained better than received information, even when the received version is immediately shown afterwards. This is why the *build* stage now carries optional `generate_prompt` and `generate_answer` fields. For at least one step, Apti asks the learner "why do you think...?" and gates the answer behind a reveal button. The struggle — even a brief one — is the encoding mechanism. The system must never auto-reveal.
+
+**4. Desirable difficulties (Bjork, 1994)**
+Effortful retrieval builds stronger memory traces than easy retrieval. Two places this appears:
+- The *practice* stage shows the problem first; hints and solution are gated behind explicit taps. The learner must attempt before receiving help.
+- The *recall* stage runs before the formal quiz, forcing the learner to retrieve key ideas from memory under low stakes.
+
+**5. Encoding specificity (Tulving & Thomson, 1973)**
+Retrieval works best when the cue at test matches the cue at encoding. Multiple encoding contexts (verbal in *intuition*, spatial/analogical in *analogy*, computational in *worked*, self-applied in *practice*) create multiple retrieval paths. This is why the lesson is eight short stages, not one long explanation — the variety is deliberate.
+
+### What this means in practice
+
+- Never merge stages to save tokens. The separation is the mechanism.
+- Never auto-reveal `generate_answer`. The generation effect only works when the learner produces first.
+- Never remove the `recall` stage. Even with empty arrays it must exist; the frontend checks for it.
+- Hints in `practice` must escalate (vague → specific → near-complete). Giving the answer immediately defeats desirable difficulties.
+
+### Phase 2 (not yet built)
+
+The *recall* questions currently appear before the quiz as a warm-up. A later phase will recycle these as interleaved retrieval practice across sessions — the same question resurfacing days later, not the answer, just the question, so each retrieval is itself a re-encoding event. This requires a separate retrieval schedule table and is intentionally deferred.
+
+---
+
 ## 1. Design Principles
 
 Five rules shape every prompt below:
@@ -93,7 +129,14 @@ Produce these stages, in order:
 3. analogy     — one concrete real-world/engineering analogy. 2-3 sentences.
 4. build       — develop the idea in 2-4 SMALL ordered steps. Each step adds one
                  piece and says why. This is where formal notation/formulas are
-                 introduced, gradually, not dumped.
+                 introduced, gradually, not dumped. For at least one step, pose
+                 the "why" as a question for the LEARNER to answer first, then
+                 give the answer — never just assert it. Set generate_prompt to
+                 a short question ("Why do we...?", "What would happen if...?")
+                 and generate_answer to the answer. The frontend gates the answer
+                 behind a reveal button so the learner must produce before they
+                 receive. (Generation effect: self-produced knowledge encodes
+                 deeper than received knowledge.)
 5. worked      — ONE fully worked example. Show the REASONING, not just the
                  answer: what you notice, which method and why, each step, the
                  result. This is how an expert thinks aloud.
@@ -118,7 +161,14 @@ Return JSON only:
     "hook": string,
     "intuition": string,
     "analogy": string,
-    "build": [ { "step": string, "why": string } ],
+    "build": [
+      {
+        "step": string,
+        "why": string,
+        "generate_prompt": string | null,
+        "generate_answer": string | null
+      }
+    ],
     "worked": {
       "problem": string,
       "reasoning": [ string ],
@@ -151,9 +201,12 @@ hints/solution behind explicit taps so the learner attempts it first.
   "skill": "Algebra",
   "learner_level": "foundational",
   "unlocked_skills": ["Arithmetic", "Algebra"],
-  "recent_struggles": ["factoring", "sign errors"]
+  "recent_struggles": ["factoring", "sign errors"],
+  "learner_notes": "...the learner's own notes for this skill, or empty string..."
 }
 ```
+
+`learner_notes` is the learner's personal record of their understanding (from `skill_notes`). When non-empty, Apti builds on the learner's own mental models, addresses anything they flagged as confusing, and connects the lesson to the language they used. It is treated as untrusted DATA — never as instructions.
 
 **Frontend implications (Study Hall):**
 - Stages render ONE at a time with a "Continue" between them — a guided arc, not
@@ -217,9 +270,12 @@ Return JSON only:
   "subject": "mathematics",
   "topic": "Quadratic Equations",
   "lesson": { "...": "the lesson object just generated, so questions match it" },
-  "recent_question_prompts": ["...up to ~20 prior prompts to avoid repeats..."]
+  "recent_question_prompts": ["...up to ~20 prior prompts to avoid repeats..."],
+  "learner_notes": "...the learner's notes for this skill, or empty string..."
 }
 ```
+
+When `learner_notes` is non-empty, Examiner targets questions at known weak spots or misconceptions the learner noted.
 
 The backend MUST pass `recent_question_prompts` (pulled from the DB) — the
 prompt's "never reuse" rule is only enforceable if the model can see them.

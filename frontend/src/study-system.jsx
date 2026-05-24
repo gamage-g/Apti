@@ -590,7 +590,7 @@ function Dashboard({ setView, setActiveSkill, c, mode, setMode, skills, subjects
                 return (
                   <div key={skill.id}
                     className={`skill-row ${skill.locked?"":"unlocked"}`}
-                    onClick={()=>{ if(!skill.locked){ setActiveSkill({...skill, subjectId:activeSubject, subs:skill.subs||[], subMastery:skill.subMastery||[], subIds:skill.subIds||[]}); setView("skill"); }}}
+                    onClick={()=>{ if(!skill.locked){ const full=skills.find(s=>s.id===skill.id)||skill; setActiveSkill({...full, subjectId:activeSubject}); setView("skill"); }}}
                     style={{opacity:skill.locked?0.4:1, cursor:skill.locked?"default":"pointer"}}>
                     <div className="display" style={{fontSize:28, color:skill.locked?c.faint:ac, width:52, flexShrink:0, lineHeight:1}}>
                       {skill.locked ? "·" : skill.num}
@@ -660,7 +660,7 @@ function Dashboard({ setView, setActiveSkill, c, mode, setMode, skills, subjects
 }
 
 /* ─── Skill Detail ────────────────────────────────────────────── */
-function SkillDetail({ skill, setView, c, onEnterHall, setLabPhase }) {
+function SkillDetail({ skill, setView, c, onEnterHall }) {
   const [notes,     setNotes]     = useState("");
   const [saveState, setSaveState] = useState("idle"); // idle | saving | saved
 
@@ -956,6 +956,7 @@ function StudyHall({ setView, c, activeSkill, onComplete }) {
   const [practiceOut,  setPracticeOut]  = useState("unaided"); // unaided | hint_used | solution_revealed
   const [recallIdx,    setRecallIdx]    = useState(0);
   const [recallShown,  setRecallShown]  = useState(false);
+  const [genRevealed,  setGenRevealed]  = useState({});
   const [questions,    setQuestions]    = useState([]);
   const [qIdx,         setQIdx]         = useState(0);
   const [sel,          setSel]          = useState(null);
@@ -1061,6 +1062,7 @@ function StudyHall({ setView, c, activeSkill, onComplete }) {
       setHintsShown(0);
       setRecallIdx(0);
       setRecallShown(false);
+      setGenRevealed({});
     };
 
     const renderStage = () => {
@@ -1097,9 +1099,41 @@ function StudyHall({ setView, c, activeSkill, onComplete }) {
                 <div className="body" style={{fontSize:18, lineHeight:1.65, color:c.ink, marginBottom:8}}>
                   <MathText text={step.step} c={c} />
                 </div>
-                <div className="body" style={{fontSize:15, lineHeight:1.6, color:c.sub, paddingLeft:16, borderLeft:`2px solid ${c.line}`}}>
-                  <MathText text={step.why} c={c} />
-                </div>
+                {step.generate_prompt && step.generate_answer ? (
+                  <div style={{marginTop:10}}>
+                    <div style={{
+                      padding:"14px 18px", borderRadius:3, marginBottom:10,
+                      border:`1px solid ${c.gold}`, borderLeft:`4px solid ${c.gold}`,
+                      background:`${c.gold}0d`,
+                    }}>
+                      <div className="kicker" style={{color:c.gold, marginBottom:8, fontSize:9}}>THINK FIRST</div>
+                      <div className="body" style={{fontSize:16, color:c.ink, lineHeight:1.6}}>
+                        <MathText text={step.generate_prompt} c={c} />
+                      </div>
+                    </div>
+                    {genRevealed[i] ? (
+                      <div style={{
+                        padding:"12px 16px", borderRadius:3,
+                        background:c.bgAlt, border:`1px solid ${c.line}`,
+                        borderLeft:`3px solid ${c.gold}`,
+                      }}>
+                        <div className="kicker" style={{fontSize:9, color:c.gold, marginBottom:6}}>REASONING</div>
+                        <div className="body" style={{fontSize:15, color:c.sub, lineHeight:1.65}}>
+                          <MathText text={step.generate_answer} c={c} />
+                        </div>
+                      </div>
+                    ) : (
+                      <button className="btn btn-ghost" style={{fontSize:12}}
+                        onClick={() => setGenRevealed(r => ({...r, [i]: true}))}>
+                        Reveal reasoning →
+                      </button>
+                    )}
+                  </div>
+                ) : (
+                  <div className="body" style={{fontSize:15, lineHeight:1.6, color:c.sub, paddingLeft:16, borderLeft:`2px solid ${c.line}`}}>
+                    <MathText text={step.why} c={c} />
+                  </div>
+                )}
                 {i < (stages.build||[]).length - 1 && <div style={{height:1, background:c.line, margin:"20px 0"}}/>}
               </div>
             ))}
@@ -1252,7 +1286,7 @@ function StudyHall({ setView, c, activeSkill, onComplete }) {
 
     // For recall: "Continue" only appears after all recall items are revealed
     const recallItems = stages.recall || [];
-    const recallDone = currentKey !== "recall" || (recallShown && recallIdx === recallItems.length - 1);
+    const recallDone = currentKey !== "recall" || recallItems.length === 0 || (recallShown && recallIdx === recallItems.length - 1);
 
     return (
       <div className="fade">
@@ -1791,7 +1825,7 @@ function PythonLab({ c, setView, skills, setActiveSkill }) {
 
   const studyWithApti = () => {
     if (aptiSkill && !aptiSkill.locked) {
-      setActiveSkill({ ...aptiSkill, subjectId: "programming", subs: [], subMastery: [], subIds: [] });
+      setActiveSkill({ ...aptiSkill, subjectId: "programming" });
       setView("session");
     }
   };
@@ -1900,12 +1934,12 @@ function PythonLab({ c, setView, skills, setActiveSkill }) {
             {/* Tab bar */}
             <div style={{ display:"flex", gap:4, marginBottom:20, borderBottom:`1px solid ${c.line}`, paddingBottom:12 }}>
               {["notes","exercises","resources","quiz"].map(t => (
-                <button key={t} onClick={() => t === "quiz" ? startQuiz() : setTab(t)}
+                <button key={t} onClick={() => setTab(t)}
                   style={{
                     padding:"6px 14px", borderRadius:3,
-                    border: tab===t && t!=="quiz" ? `1px solid ${c.ink}` : `1px solid ${c.line}`,
-                    background: tab===t && t!=="quiz" ? c.ink : "none",
-                    color: tab===t && t!=="quiz" ? c.bg : c.sub,
+                    border: tab===t ? `1px solid ${c.ink}` : `1px solid ${c.line}`,
+                    background: tab===t ? c.ink : "none",
+                    color: tab===t ? c.bg : c.sub,
                     cursor:"pointer", fontFamily:"'Spline Sans Mono',monospace", fontSize:11, letterSpacing:"0.05em",
                     textTransform:"uppercase",
                   }}>
@@ -2274,7 +2308,6 @@ export default function App() {
   const [subjects,      setSubjects]      = useState([]);
   const [activeSubject, setActiveSubject] = useState("mathematics");
   const [refreshKey,    setRefreshKey]    = useState(0);
-  const [labPhase,      setLabPhase]      = useState(0);
   const c = THEMES[mode];
 
   const fetchData = () => {
@@ -2288,17 +2321,15 @@ export default function App() {
 
   useEffect(fetchData, [refreshKey]);
 
-  const subjectSkills = subjects.find(s => s.id === activeSubject)?.skills || [];
-
   const handleEnterHall = () => {
     let skill = activeSkill;
     if (!skill || skill.subjectId !== activeSubject) {
-      skill = subjectSkills.find(s => !s.locked);
+      skill = skills.find(s => s.subjectId === activeSubject && !s.locked);
       if (!skill) {
         alert("No unlocked skills in this subject yet. Complete the required prerequisite skills first.");
         return;
       }
-      setActiveSkill({...skill, subjectId: activeSubject, subs: [], subMastery: [], subIds: []});
+      setActiveSkill({...skill, subjectId: activeSubject});
     }
     setView("session");
   };
@@ -2315,7 +2346,7 @@ export default function App() {
           />
           <main className="main">
             {view==="dashboard"   && <Dashboard setView={setView} setActiveSkill={setActiveSkill} c={c} mode={mode} setMode={setMode} skills={skills} subjects={subjects} activeSubject={activeSubject} setActiveSubject={setActiveSubject} onEnterHall={handleEnterHall}/>}
-            {view==="skill"       && <SkillDetail skill={activeSkill} setView={setView} c={c} onEnterHall={handleEnterHall} setLabPhase={setLabPhase}/>}
+            {view==="skill"       && <SkillDetail skill={activeSkill} setView={setView} c={c} onEnterHall={handleEnterHall}/>}
             {view==="session"     && <StudyHall setView={setView} c={c} activeSkill={activeSkill} onComplete={()=>setRefreshKey(k=>k+1)}/>}
             {view==="flashcards"  && <Flashcards setView={setView} c={c}/>}
             {view==="progress"    && <Progress c={c} skills={skills} subjects={subjects}/>}
