@@ -573,7 +573,7 @@ function Dashboard({ setView, setActiveSkill, c, mode, setMode, skills, subjects
                 return (
                   <div key={skill.id}
                     className={`skill-row ${skill.locked?"":"unlocked"}`}
-                    onClick={()=>{ if(!skill.locked){ setActiveSkill({...skill, subs:skill.subs||[], subMastery:skill.subMastery||[], subIds:skill.subIds||[]}); setView("skill"); }}}
+                    onClick={()=>{ if(!skill.locked){ setActiveSkill({...skill, subjectId:activeSubject, subs:skill.subs||[], subMastery:skill.subMastery||[], subIds:skill.subIds||[]}); setView("skill"); }}}
                     style={{opacity:skill.locked?0.4:1, cursor:skill.locked?"default":"pointer"}}>
                     <div className="display" style={{fontSize:28, color:skill.locked?c.faint:ac, width:52, flexShrink:0, lineHeight:1}}>
                       {skill.locked ? "·" : skill.num}
@@ -1408,8 +1408,11 @@ export default function App() {
     let skill = activeSkill;
     if (!skill || skill.subjectId !== activeSubject) {
       skill = subjectSkills.find(s => !s.locked);
-      if (!skill) return;
-      setActiveSkill({...skill, subs: [], subMastery: [], subIds: []});
+      if (!skill) {
+        alert("No unlocked skills in this subject yet. Complete the required prerequisite skills first.");
+        return;
+      }
+      setActiveSkill({...skill, subjectId: activeSubject, subs: [], subMastery: [], subIds: []});
     }
     setView("session");
   };
