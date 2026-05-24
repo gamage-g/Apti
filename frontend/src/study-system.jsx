@@ -963,7 +963,7 @@ function StudyHall({ setView, c, activeSkill, onComplete }) {
 
   const fetchQuiz = async () => {
     setPhase("quiz_loading");
-    setSel(null); setOpenText("");
+    setSel(null); setOpenText(""); setAnswers([]);
     try {
       const d  = await apiFetch("/api/session/quiz", {
         method: "POST",
@@ -1044,25 +1044,25 @@ function StudyHall({ setView, c, activeSkill, onComplete }) {
     const renderStage = () => {
       if (currentKey === "hook") {
         return (
-          <p className="body" style={{fontSize:22, lineHeight:1.65, color:c.ink, fontStyle:"italic"}}>
+          <div className="body" style={{fontSize:22, lineHeight:1.65, color:c.ink, fontStyle:"italic"}}>
             <MathText text={stages.hook} c={c} />
-          </p>
+          </div>
         );
       }
 
       if (currentKey === "intuition") {
         return (
-          <p className="body dropcap" style={{fontSize:21, lineHeight:1.65, color:c.ink}}>
+          <div className="body dropcap" style={{fontSize:21, lineHeight:1.65, color:c.ink}}>
             <MathText text={stages.intuition} c={c} />
-          </p>
+          </div>
         );
       }
 
       if (currentKey === "analogy") {
         return (
-          <p className="body" style={{fontSize:18, lineHeight:1.7, color:c.sub}}>
+          <div className="body" style={{fontSize:18, lineHeight:1.7, color:c.sub}}>
             <MathText text={stages.analogy} c={c} />
-          </p>
+          </div>
         );
       }
 
@@ -1072,12 +1072,12 @@ function StudyHall({ setView, c, activeSkill, onComplete }) {
             {(stages.build || []).map((step, i) => (
               <div key={i} style={{marginBottom:24}}>
                 <div className="mono" style={{fontSize:11, color:c.faint, marginBottom:6, letterSpacing:"0.1em"}}>STEP {i+1}</div>
-                <p className="body" style={{fontSize:18, lineHeight:1.65, color:c.ink, marginBottom:8}}>
+                <div className="body" style={{fontSize:18, lineHeight:1.65, color:c.ink, marginBottom:8}}>
                   <MathText text={step.step} c={c} />
-                </p>
-                <p className="body" style={{fontSize:15, lineHeight:1.6, color:c.sub, paddingLeft:16, borderLeft:`2px solid ${c.line}`}}>
+                </div>
+                <div className="body" style={{fontSize:15, lineHeight:1.6, color:c.sub, paddingLeft:16, borderLeft:`2px solid ${c.line}`}}>
                   <MathText text={step.why} c={c} />
-                </p>
+                </div>
                 {i < (stages.build||[]).length - 1 && <div style={{height:1, background:c.line, margin:"20px 0"}}/>}
               </div>
             ))}
@@ -1091,9 +1091,9 @@ function StudyHall({ setView, c, activeSkill, onComplete }) {
           <div>
             <div className="paper" style={{padding:"18px 22px", marginBottom:20, borderLeft:`4px solid ${c.blue}`}}>
               <div className="kicker" style={{color:c.blue, marginBottom:8}}>Problem</div>
-              <p className="body" style={{fontSize:18, lineHeight:1.6, color:c.ink}}>
+              <div className="body" style={{fontSize:18, lineHeight:1.6, color:c.ink}}>
                 <MathText text={w.problem} c={c} />
-              </p>
+              </div>
             </div>
             <div className="kicker" style={{marginBottom:12}}>Expert Reasoning</div>
             {(w.reasoning || []).map((line, i) => (
@@ -1103,17 +1103,17 @@ function StudyHall({ setView, c, activeSkill, onComplete }) {
                   border:`1px solid ${c.blue}`, borderRadius:"50%",
                   display:"flex", alignItems:"center", justifyContent:"center",
                 }}>{i+1}</span>
-                <p className="body" style={{fontSize:16, lineHeight:1.65, color:c.ink, margin:0}}>
+                <div className="body" style={{fontSize:16, lineHeight:1.65, color:c.ink}}>
                   <MathText text={line} c={c} />
-                </p>
+                </div>
               </div>
             ))}
             {w.answer && (
               <div style={{marginTop:20, padding:"14px 18px", background:c.bgAlt, borderRadius:3, border:`1px solid ${c.line}`}}>
                 <div className="kicker" style={{marginBottom:6}}>Answer</div>
-                <p className="body" style={{fontSize:17, color:c.ink, margin:0}}>
+                <div className="body" style={{fontSize:17, color:c.ink}}>
                   <MathText text={w.answer} c={c} />
-                </p>
+                </div>
               </div>
             )}
           </div>
@@ -1127,9 +1127,9 @@ function StudyHall({ setView, c, activeSkill, onComplete }) {
           <div>
             <div className="paper" style={{padding:"18px 22px", marginBottom:20, borderLeft:`4px solid ${c.green}`}}>
               <div className="kicker" style={{color:c.green, marginBottom:8}}>Your Turn</div>
-              <p className="body" style={{fontSize:18, lineHeight:1.6, color:c.ink}}>
+              <div className="body" style={{fontSize:18, lineHeight:1.6, color:c.ink}}>
                 <MathText text={pr.problem} c={c} />
-              </p>
+              </div>
             </div>
 
             {practiceStep === "problem" && (
@@ -1155,9 +1155,9 @@ function StudyHall({ setView, c, activeSkill, onComplete }) {
                     borderLeft:`3px solid ${c.gold}`,
                   }}>
                     <div className="mono" style={{fontSize:9, color:c.gold, marginBottom:4}}>HINT {i+1}</div>
-                    <p className="body" style={{fontSize:15, color:c.sub, margin:0, lineHeight:1.6}}>
+                    <div className="body" style={{fontSize:15, color:c.sub, lineHeight:1.6}}>
                       <MathText text={h} c={c} />
-                    </p>
+                    </div>
                   </div>
                 ))}
                 <div style={{display:"flex", gap:10, flexWrap:"wrap", marginTop:10}}>
@@ -1176,9 +1176,9 @@ function StudyHall({ setView, c, activeSkill, onComplete }) {
             {practiceStep === "solution" && (
               <div style={{padding:"18px 22px", background:c.bgAlt, borderRadius:3, border:`1px solid ${c.line}`}}>
                 <div className="kicker" style={{marginBottom:8}}>Solution</div>
-                <p className="body" style={{fontSize:16, lineHeight:1.65, color:c.ink}}>
+                <div className="body" style={{fontSize:16, lineHeight:1.65, color:c.ink}}>
                   <MathText text={pr.solution} c={c} />
-                </p>
+                </div>
               </div>
             )}
           </div>
@@ -1194,17 +1194,17 @@ function StudyHall({ setView, c, activeSkill, onComplete }) {
             <div className="kicker" style={{marginBottom:8}}>
               Quick Check {recallIdx+1} of {items.length}
             </div>
-            <p className="body" style={{fontSize:20, lineHeight:1.5, color:c.ink, marginBottom:20}}>
+            <div className="body" style={{fontSize:20, lineHeight:1.5, color:c.ink, marginBottom:20}}>
               <MathText text={item.q} c={c} />
-            </p>
+            </div>
             {!recallShown ? (
               <button className="btn btn-ghost" onClick={()=>setRecallShown(true)}>Reveal Answer</button>
             ) : (
               <div>
                 <div style={{padding:"14px 18px", background:c.bgAlt, borderRadius:3, border:`1px solid ${c.line}`, marginBottom:16}}>
-                  <p className="body" style={{fontSize:16, color:c.ink, margin:0}}>
+                  <div className="body" style={{fontSize:16, color:c.ink}}>
                     <MathText text={item.a} c={c} />
-                  </p>
+                  </div>
                 </div>
                 {recallIdx + 1 < items.length ? (
                   <button className="btn btn-ghost" onClick={()=>{ setRecallIdx(i=>i+1); setRecallShown(false); }}>
@@ -1219,9 +1219,9 @@ function StudyHall({ setView, c, activeSkill, onComplete }) {
 
       if (currentKey === "connections") {
         return (
-          <p className="body" style={{fontSize:18, lineHeight:1.7, color:c.sub}}>
+          <div className="body" style={{fontSize:18, lineHeight:1.7, color:c.sub}}>
             <MathText text={lesson.connections} c={c} />
-          </p>
+          </div>
         );
       }
 
@@ -1292,9 +1292,9 @@ function StudyHall({ setView, c, activeSkill, onComplete }) {
                   <div style={{height:1, background:c.line, margin:"32px 0"}}/>
                   <div className="paper" style={{padding:"16px 20px", borderLeft:`4px solid ${c.gold}`}}>
                     <div className="kicker" style={{color:c.gold, marginBottom:8}}>Watch Out</div>
-                    <p className="body" style={{fontSize:15, color:c.sub, lineHeight:1.6}}>
+                    <div className="body" style={{fontSize:15, color:c.sub, lineHeight:1.6}}>
                       <MathText text={lesson.watch_out} c={c} />
-                    </p>
+                    </div>
                   </div>
                 </>
               )}
@@ -1361,7 +1361,7 @@ function StudyHall({ setView, c, activeSkill, onComplete }) {
               <div className="mono" style={{fontSize:10, color:c.faint, marginBottom:10}}>
                 {q.layer.toUpperCase()} · {isMCQ ? "MULTIPLE CHOICE" : "OPEN ANSWER"}
               </div>
-              <p className="serif-h" style={{fontSize:24, lineHeight:1.4, color:c.ink, marginBottom:28}}>{q.prompt}</p>
+              <div className="serif-h" style={{fontSize:24, lineHeight:1.4, color:c.ink, marginBottom:28}}><MathText text={q.prompt} c={c}/></div>
 
               {isMCQ ? (
                 <>
@@ -1381,7 +1381,7 @@ function StudyHall({ setView, c, activeSkill, onComplete }) {
                         }}>
                           {answered ? (isCorrect?"✓":isSel?"✗":String.fromCharCode(65+i)) : String.fromCharCode(65+i)}
                         </span>
-                        {opt}
+                        <MathText text={opt} c={c}/>
                       </button>
                     );
                   })}
