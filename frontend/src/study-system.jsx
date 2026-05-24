@@ -962,7 +962,12 @@ function StudyHall({ setView, c, activeSkill, onComplete }) {
 
   /* ── Lesson (8 stages) ── */
   if (phase === "lesson" && lesson) {
-    const stages = lesson.stages || {};
+    // If the backend returned the old 3-field format (deployment mismatch),
+    // bail out with a clear message rather than silently blank stages.
+    if (!lesson.stages) {
+      return <ErrorScreen c={c} message="Lesson format mismatch — the backend may still be deploying. Wait 2–3 minutes and try again." onBack={() => setView("dashboard")} />;
+    }
+    const stages = lesson.stages;
     const currentKey = STAGE_KEYS[stageIdx];
     const isLast = stageIdx === STAGE_KEYS.length - 1;
     const totalStages = STAGE_KEYS.length;
