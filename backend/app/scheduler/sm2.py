@@ -112,7 +112,7 @@ def mastery_delta(
     # Slow-but-correct signals fragile knowledge; dampen the gain
     fragile = _is_slow_relative_to_baseline(response_times, baselines)
 
-    # Linear map: 0.0 → -15, 0.5 → 0, 1.0 → +15
+    # Linear map: 0.0 → -15 (clamped to -10), 0.5 → 0, 1.0 → +15
     raw = (avg - 0.5) * 30
     if fragile and raw > 0:
         raw *= 0.6

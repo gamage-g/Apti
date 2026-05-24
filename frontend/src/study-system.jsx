@@ -858,7 +858,7 @@ function MathText({ text, c, style = {} }) {
         if (p.type === "display-math") {
           let html = "";
           try { html = katex.renderToString(p.content, { throwOnError: false, displayMode: true }); } catch {}
-          return <div key={i} style={{ overflowX: "auto", margin: "12px 0" }} dangerouslySetInnerHTML={{ __html: html }} />;
+          return <span key={i} style={{ display: "block", overflowX: "auto", margin: "12px 0" }} dangerouslySetInnerHTML={{ __html: html }} />;
         }
         if (p.type === "code") {
           return (
@@ -919,6 +919,7 @@ function StudyHall({ setView, c, activeSkill, onComplete }) {
 
   const fetchQuiz = async () => {
     setPhase("quiz_loading");
+    setSel(null); setOpenText("");
     try {
       const d  = await apiFetch("/api/session/quiz", {
         method: "POST",
@@ -1166,7 +1167,7 @@ function StudyHall({ setView, c, activeSkill, onComplete }) {
       if (currentKey === "connections") {
         return (
           <p className="body" style={{fontSize:18, lineHeight:1.7, color:c.sub}}>
-            <MathText text={stages.connections || lesson.connections} c={c} />
+            <MathText text={lesson.connections} c={c} />
           </p>
         );
       }
