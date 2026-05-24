@@ -78,6 +78,38 @@ INSERT INTO skills (id, num, label, accent_key, sort_order, subject_id) VALUES
     ('prog-projects',        'Py.IV',  'Projects',        'green', 204, 'programming')
 ON CONFLICT (id) DO NOTHING;
 
+-- ── Sub-skills: Electrical Engineering ───────────────────────────────────────
+
+INSERT INTO sub_skills (skill_id, label, sort_order) VALUES
+    ('ee-dc-circuits',      'Voltage & Current',     1),
+    ('ee-dc-circuits',      'Resistance',            2),
+    ('ee-dc-circuits',      'Ohm''s Law',            3),
+    ('ee-dc-circuits',      'Kirchhoff''s Laws',     4),
+    ('ee-ac-circuits',      'Sinusoids & Phasors',   1),
+    ('ee-ac-circuits',      'Impedance',             2),
+    ('ee-ac-circuits',      'AC Power',              3),
+    ('ee-ac-circuits',      'Resonance',             4),
+    ('ee-circuit-analysis', 'Node Voltage',          1),
+    ('ee-circuit-analysis', 'Mesh Current',          2),
+    ('ee-circuit-analysis', 'Thevenin''s Theorem',   3),
+    ('ee-circuit-analysis', 'Superposition',         4),
+    ('ee-electromagnetism', 'Electric Fields',       1),
+    ('ee-electromagnetism', 'Magnetic Fields',       2),
+    ('ee-electromagnetism', 'Faraday''s Law',        3),
+    ('ee-electromagnetism', 'Maxwell''s Equations',  4),
+    ('ee-signals',          'Fourier Analysis',      1),
+    ('ee-signals',          'Sampling',              2),
+    ('ee-signals',          'Filters',               3),
+    ('ee-signals',          'Frequency Domain',      4)
+ON CONFLICT DO NOTHING;
+
+-- Seed mastery rows for EE and programming skills (sub_skill_id IS NULL)
+INSERT INTO mastery (skill_id, sub_skill_id, score)
+SELECT s.id, NULL, 0 FROM skills s
+WHERE NOT EXISTS (
+    SELECT 1 FROM mastery m WHERE m.skill_id = s.id AND m.sub_skill_id IS NULL
+);
+
 -- ── Prerequisite graph ────────────────────────────────────────────────────────
 
 -- Mathematics chain — matches schema.sql prerequisite seed exactly

@@ -248,8 +248,15 @@ ON CONFLICT (id) DO NOTHING;
 
 
 -- ─── Skills: Electrical Engineering ──────────────────────────────────────────
--- Skills added here when EE content is ready. The subject prerequisite
--- (seeded below) will lock all EE skills behind calculus mastery >= 70.
+-- Gated behind Calculus ≥ 70 (see prerequisites below).
+
+INSERT INTO skills (id, num, label, accent_key, subject_id, sort_order) VALUES
+    ('ee-dc-circuits',      '01', 'DC Circuits',      'blue', 'electrical_engineering', 101),
+    ('ee-ac-circuits',      '02', 'AC Circuits',      'blue', 'electrical_engineering', 102),
+    ('ee-circuit-analysis', '03', 'Circuit Analysis', 'blue', 'electrical_engineering', 103),
+    ('ee-electromagnetism', '04', 'Electromagnetism', 'blue', 'electrical_engineering', 104),
+    ('ee-signals',          '05', 'Signals',          'blue', 'electrical_engineering', 105)
+ON CONFLICT (id) DO NOTHING;
 
 
 -- ─── Sub-skills: Mathematics ──────────────────────────────────────────────────
@@ -308,6 +315,32 @@ INSERT INTO sub_skills (skill_id, label, sort_order) VALUES
     ('prog-projects',        'Data Analysis',       1),
     ('prog-projects',        'Visualisation',       2),
     ('prog-projects',        'Automation',          3)
+ON CONFLICT DO NOTHING;
+
+
+-- ─── Sub-skills: Electrical Engineering ──────────────────────────────────────
+
+INSERT INTO sub_skills (skill_id, label, sort_order) VALUES
+    ('ee-dc-circuits',      'Voltage & Current',    1),
+    ('ee-dc-circuits',      'Resistance',           2),
+    ('ee-dc-circuits',      'Ohm''s Law',           3),
+    ('ee-dc-circuits',      'Kirchhoff''s Laws',    4),
+    ('ee-ac-circuits',      'Sinusoids & Phasors',  1),
+    ('ee-ac-circuits',      'Impedance',            2),
+    ('ee-ac-circuits',      'AC Power',             3),
+    ('ee-ac-circuits',      'Resonance',            4),
+    ('ee-circuit-analysis', 'Node Voltage',         1),
+    ('ee-circuit-analysis', 'Mesh Current',         2),
+    ('ee-circuit-analysis', 'Thevenin''s Theorem',  3),
+    ('ee-circuit-analysis', 'Superposition',        4),
+    ('ee-electromagnetism', 'Electric Fields',      1),
+    ('ee-electromagnetism', 'Magnetic Fields',      2),
+    ('ee-electromagnetism', 'Faraday''s Law',       3),
+    ('ee-electromagnetism', 'Maxwell''s Equations', 4),
+    ('ee-signals',          'Fourier Analysis',     1),
+    ('ee-signals',          'Sampling',             2),
+    ('ee-signals',          'Filters',              3),
+    ('ee-signals',          'Frequency Domain',     4)
 ON CONFLICT DO NOTHING;
 
 
