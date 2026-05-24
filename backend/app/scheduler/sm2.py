@@ -76,20 +76,29 @@ def _is_slow_relative_to_baseline(
     return slow_count > len(pairs) / 2
 
 
+_PRACTICE_MULTIPLIER = {
+    "unaided":           1.0,   # solved without help — full credit
+    "hint_used":         0.9,   # needed a nudge — slight dampening
+    "solution_revealed": 0.7,   # saw the answer — meaningful dampening
+}
+
+
 def mastery_delta(
     graded_results: list[GradedOpen],
     mcq_results: list[GradedMCQ],
     response_times: list[int],
     baselines: list[int],
+    practice_outcome: str = "unaided",
 ) -> int:
     """
     Compute integer mastery point change after a session.
     Range: -10 to +15.
 
-    graded_results: LLM-scored open answers
-    mcq_results:    code-scored MCQ answers
-    response_times: ms per question, in submission order
-    baselines:      median ms per question from prior sessions (same order)
+    graded_results:   LLM-scored open answers
+    mcq_results:      code-scored MCQ answers
+    response_times:   ms per question, in submission order
+    baselines:        median ms from prior sessions (same length as response_times)
+    practice_outcome: how the learner handled the practice problem
     """
     score = 0.0
     n = 0
@@ -116,5 +125,10 @@ def mastery_delta(
     raw = (avg - 0.5) * 30
     if fragile and raw > 0:
         raw *= 0.6
+
+    # Apply practice outcome multiplier — only dampens gains, never losses
+    multiplier = _PRACTICE_MULTIPLIER.get(practice_outcome, 1.0)
+    if raw > 0:
+        raw *= multiplier
 
     return round(max(-10, min(15, raw)))

@@ -645,6 +645,30 @@ function Dashboard({ setView, setActiveSkill, c, mode, setMode, skills, subjects
 
 /* ─── Skill Detail ────────────────────────────────────────────── */
 function SkillDetail({ skill, setView, c, onEnterHall }) {
+  const [notes,     setNotes]     = useState("");
+  const [saveState, setSaveState] = useState("idle"); // idle | saving | saved
+
+  useEffect(() => {
+    if (!skill) return;
+    apiFetch(`/api/notes/${skill.id}`)
+      .then(d => setNotes(d.content || ""))
+      .catch(() => {});
+  }, [skill?.id]);
+
+  const saveNotes = async (content) => {
+    setSaveState("saving");
+    try {
+      await apiFetch(`/api/notes/${skill.id}`, {
+        method: "PUT",
+        body: JSON.stringify({ content }),
+      });
+      setSaveState("saved");
+      setTimeout(() => setSaveState("idle"), 2000);
+    } catch {
+      setSaveState("idle");
+    }
+  };
+
   if(!skill) return null;
   const ac = c[skill.accentKey] || c.accent;
   return (
@@ -718,11 +742,31 @@ function SkillDetail({ skill, setView, c, onEnterHall }) {
               <button className="btn btn-ghost" onClick={()=>setView("dashboard")}>Back to Curriculum</button>
             </div>
 
-            <div className="paper" style={{padding:"20px 22px", borderLeft:`4px solid ${c.gold}`}}>
+            <div className="paper" style={{padding:"20px 22px", borderLeft:`4px solid ${c.gold}`, marginBottom:24}}>
               <div className="kicker" style={{marginBottom:10}}>Adaptive Scheduling</div>
               <p className="body" style={{fontSize:15, color:c.sub, lineHeight:1.6}}>
                 Apti picks the topic where you need the most work and generates a fresh lesson each session.
               </p>
+            </div>
+
+            <div>
+              <div style={{display:"flex", justifyContent:"space-between", alignItems:"baseline", borderBottom:`2px solid ${c.rule}`, paddingBottom:10, marginBottom:14}}>
+                <h2 className="serif-h" style={{fontSize:20, color:c.ink}}>Study Notes</h2>
+                <span className="mono" style={{fontSize:10, color: saveState==="saved" ? c.green : c.faint}}>
+                  {saveState === "saving" ? "SAVING…" : saveState === "saved" ? "SAVED" : "AUTO-SAVES ON EXIT"}
+                </span>
+              </div>
+              <p className="body" style={{fontSize:13, color:c.faint, marginBottom:10, lineHeight:1.5}}>
+                Write what clicked, what confused you, your own analogies. Apti reads these when preparing your next lesson.
+              </p>
+              <textarea
+                className="open-ans"
+                value={notes}
+                onChange={e => setNotes(e.target.value)}
+                onBlur={e => saveNotes(e.target.value)}
+                placeholder={`e.g. "I keep mixing up factoring and expanding — need to practise the sign rules."`}
+                style={{minHeight:160, fontSize:15}}
+              />
             </div>
           </div>
         </div>
@@ -949,7 +993,11 @@ function StudyHall({ setView, c, activeSkill, onComplete }) {
     try {
       const d = await apiFetch("/api/session/submit", {
         method: "POST",
-        body: JSON.stringify({ session_id: sessionId, answers: finalAnswers }),
+        body: JSON.stringify({
+          session_id: sessionId,
+          answers: finalAnswers,
+          practice_outcome: practiceOut,
+        }),
       });
       setResult(d); setPhase("result");
     } catch (e) { setError(e.message); setPhase("error"); }

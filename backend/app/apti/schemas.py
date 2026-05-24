@@ -49,3 +49,35 @@ class StagedLesson(BaseModel):
     key_terms: list[KeyTerm]
     watch_out: str
     connections: str
+
+
+# ─── Examiner schemas ─────────────────────────────────────────────────────────
+
+class QuizQuestion(BaseModel):
+    id: str
+    layer: str
+    type: str
+    prompt: str
+    options: list[str] | None = None
+    correct_index: int | None = None
+    model_answer: str | None = None
+    explanation: str
+
+
+class Quiz(BaseModel):
+    questions: list[QuizQuestion]
+
+
+# ─── Grader schemas ───────────────────────────────────────────────────────────
+
+class GradeResult(BaseModel):
+    question_id: str
+    intuition: float
+    method: float
+    accuracy: float
+    verdict: str
+    feedback: str
+
+
+class GradeResponse(BaseModel):
+    results: list[GradeResult]

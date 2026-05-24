@@ -7,13 +7,11 @@ import uuid
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
-
-from pydantic import ValidationError
+from pydantic import BaseModel, ValidationError
 
 from app.db.connection import get_pool
 from app.apti import client as apti
-from app.apti.schemas import StagedLesson
+from app.apti.schemas import StagedLesson, Quiz, GradeResponse
 from app.scheduler.sm2 import mastery_delta, GradedOpen, GradedMCQ
 
 router = APIRouter(prefix="/api/session", tags=["session"])
@@ -34,6 +32,7 @@ class AnswerSubmission(BaseModel):
 class SubmitRequest(BaseModel):
     session_id: str
     answers: list[AnswerSubmission]
+    practice_outcome: str = "unaided"  # unaided | hint_used | solution_revealed
 
 
 # ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -100,6 +99,48 @@ async def _update_mastery(pool, skill_id: str, delta: int) -> int:
     return row["score"]
 
 
+def _learner_level(mastery: int) -> str:
+    if mastery >= 70:
+        return "advanced"
+    if mastery >= 40:
+        return "intermediate"
+    return "foundational"
+
+
+async def _get_response_time_baseline(pool, skill_id: str) -> int:
+    """Median response time (ms) across all prior completed sessions for this skill."""
+    rows = await pool.fetch(
+        """
+        SELECT sa.response_time_ms
+        FROM session_answers sa
+        JOIN sessions s ON s.id = sa.session_id
+        WHERE s.skill_id = $1 AND sa.response_time_ms IS NOT NULL
+          AND s.completed_at IS NOT NULL
+        ORDER BY s.started_at DESC LIMIT 100
+        """,
+        skill_id,
+    )
+    times = sorted(r["response_time_ms"] for r in rows)
+    if not times:
+        return 0
+    return times[len(times) // 2]
+
+
+async def _get_completed_session_count(pool, skill_id: str) -> int:
+    row = await pool.fetchrow(
+        "SELECT COUNT(*) AS n FROM sessions WHERE skill_id = $1 AND completed_at IS NOT NULL",
+        skill_id,
+    )
+    return int(row["n"]) if row else 0
+
+
+async def _get_learner_notes(pool, skill_id: str) -> str:
+    row = await pool.fetchrow(
+        "SELECT content FROM skill_notes WHERE skill_id = $1", skill_id
+    )
+    return row["content"] if row else ""
+
+
 # ─── POST /api/session/start ──────────────────────────────────────────────────
 
 @router.post("/start")
@@ -148,16 +189,19 @@ async def start_session(body: StartRequest):
     """)
     unlocked_ids = [r["id"] for r in unlocked]
     recent_struggles = await _get_recent_struggles(pool, body.skill_id)
+    current_mastery  = await _get_mastery_score(pool, body.skill_id)
+    learner_notes    = await _get_learner_notes(pool, body.skill_id)
 
     # Call Apti Lecturer
     try:
         lesson = await apti.generate_lesson(
             topic=body.topic,
             skill=skill["label"],
-            learner_level="foundational",
+            learner_level=_learner_level(current_mastery),
             unlocked_skills=unlocked_ids,
             recent_struggles=recent_struggles,
             subject_id=subject_id,
+            learner_notes=learner_notes,
         )
     except Exception as e:
         raise HTTPException(502, f"AI service error: {e}")
@@ -199,6 +243,7 @@ async def generate_quiz(body: dict):
         raise HTTPException(404, "Session not found")
 
     recent_prompts = await _get_recent_question_prompts(pool, session["skill_id"])
+    learner_notes  = await _get_learner_notes(pool, session["skill_id"])
 
     try:
         quiz = await apti.generate_quiz(
@@ -206,9 +251,15 @@ async def generate_quiz(body: dict):
             lesson=session["lesson_json"],
             recent_question_prompts=recent_prompts,
             subject_id=session["subject_id"] or "mathematics",
+            learner_notes=learner_notes,
         )
     except Exception as e:
         raise HTTPException(502, f"AI service error: {e}")
+
+    try:
+        Quiz.model_validate(quiz)
+    except ValidationError as e:
+        raise HTTPException(502, f"Quiz schema mismatch: {e}")
 
     # Prefix question IDs with session_id so they're globally unique across sessions.
     # DeepSeek reuses short IDs like "q1"–"q4"; without this, ON CONFLICT silently
@@ -290,6 +341,10 @@ async def submit_session(body: SubmitRequest):
     open_results: list[GradedOpen] = []
     if open_pairs:
         graded = await apti.grade_open_answers(open_pairs, subject_id=subject_id)
+        try:
+            GradeResponse.model_validate(graded)
+        except ValidationError as e:
+            raise HTTPException(502, f"Grade schema mismatch: {e}")
         open_results = graded.get("results", [])
         for r in open_results:
             await pool.execute(
@@ -307,19 +362,36 @@ async def submit_session(body: SubmitRequest):
             )
 
     # Compute mastery delta in code
-    delta = mastery_delta(open_results, mcq_results, response_times, baselines=[])
+    baseline_ms = await _get_response_time_baseline(pool, skill_id)
+    baselines   = [baseline_ms] * len(response_times) if baseline_ms > 0 else []
+    delta = mastery_delta(
+        open_results, mcq_results, response_times, baselines,
+        practice_outcome=body.practice_outcome,
+    )
     new_mastery = await _update_mastery(pool, skill_id, delta)
 
-    # Ask Gatekeeper if learner can progress
-    unlock_decision = await apti.gate_progression(
-        skill_id=skill_id,
-        session_results={
-            "open_results": open_results,
-            "mcq_results": mcq_results,
-            "mastery_after": new_mastery,
-        },
-        subject_id=subject_id,
-    )
+    # Ask Gatekeeper if learner can progress.
+    # Require at least 1 prior completed session (2 total) before unlocking —
+    # one lucky session should not be enough.
+    completed_before = await _get_completed_session_count(pool, skill_id)
+    if completed_before >= 1:
+        unlock_decision = await apti.gate_progression(
+            skill_id=skill_id,
+            session_results={
+                "open_results": open_results,
+                "mcq_results": mcq_results,
+                "mastery_after": new_mastery,
+                "practice_outcome": body.practice_outcome,
+            },
+            subject_id=subject_id,
+        )
+    else:
+        unlock_decision = {
+            "unlock": False,
+            "confidence": 0.0,
+            "message": "Good start — one more session will unlock a progression decision.",
+            "focus_if_held": [],
+        }
 
     # Generate flashcards when Gatekeeper approves graduation.
     # Unlock state is now computed from mastery + prerequisites — no DB column to flip.
@@ -344,10 +416,10 @@ async def submit_session(body: SubmitRequest):
             except Exception:
                 pass  # flashcard generation is non-critical; session result still returns
 
-    # Mark session complete
+    # Mark session complete and record practice outcome
     await pool.execute(
-        "UPDATE sessions SET completed_at = $1 WHERE id = $2",
-        datetime.now(timezone.utc), body.session_id,
+        "UPDATE sessions SET completed_at = $1, practice_outcome = $2 WHERE id = $3",
+        datetime.now(timezone.utc), body.practice_outcome, body.session_id,
     )
 
     return {

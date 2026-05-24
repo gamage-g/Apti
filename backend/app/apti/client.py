@@ -82,6 +82,7 @@ async def generate_lesson(
     unlocked_skills: list[str],
     recent_struggles: list[str],
     subject_id: str = "mathematics",
+    learner_notes: str = "",
 ) -> dict[str, Any]:
     user = json.dumps({
         "subject": subject_id,
@@ -90,6 +91,7 @@ async def generate_lesson(
         "learner_level": learner_level,
         "unlocked_skills": unlocked_skills,
         "recent_struggles": recent_struggles,
+        "learner_notes": learner_notes,
     })
     return await _call_with_retry(LECTURER, user, "lecturer")
 
@@ -99,12 +101,14 @@ async def generate_quiz(
     lesson: dict[str, Any],
     recent_question_prompts: list[str],
     subject_id: str = "mathematics",
+    learner_notes: str = "",
 ) -> dict[str, Any]:
     user = json.dumps({
         "subject": subject_id,
         "topic": topic,
         "lesson": lesson,
         "recent_question_prompts": recent_question_prompts,
+        "learner_notes": learner_notes,
     })
     return await _call_with_retry(EXAMINER, user, "examiner")
 
