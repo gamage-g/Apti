@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import katex from "katex";
+import { PYTHON_PHASES, PYTHON_QUIZ, PYTHON_TIPS } from "./python-lab-data.js";
 
 /* ════════════════════════════════════════════════════════════
    Apti — Editorial / Academic study system
@@ -366,6 +367,21 @@ function Sidebar({ view, setView, c, mode, setMode, skills, subjects, activeSubj
               </button>
             );
           })}
+          {activeSubject === "programming" && (
+            <button onClick={()=>setView("python-lab")} style={{
+              display:"flex", alignItems:"center", gap:8, width:"100%",
+              background: view==="python-lab" ? c.green+"14" : "none",
+              border:"none", borderRadius:3, padding:"7px 14px", marginTop:4,
+              cursor:"pointer", textAlign:"left",
+              borderLeft: view==="python-lab" ? `3px solid ${c.green}` : "3px solid transparent",
+            }}>
+              <span style={{fontSize:13}}>⚡</span>
+              <div>
+                <div className="serif-h" style={{fontSize:13, color: view==="python-lab" ? c.green : c.sub, lineHeight:1.2}}>Practice Lab</div>
+                <div className="mono" style={{fontSize:9, color:c.faint, marginTop:2}}>notes · exercises · quiz</div>
+              </div>
+            </button>
+          )}
         </div>
       )}
 
@@ -644,7 +660,7 @@ function Dashboard({ setView, setActiveSkill, c, mode, setMode, skills, subjects
 }
 
 /* ─── Skill Detail ────────────────────────────────────────────── */
-function SkillDetail({ skill, setView, c, onEnterHall }) {
+function SkillDetail({ skill, setView, c, onEnterHall, setLabPhase }) {
   const [notes,     setNotes]     = useState("");
   const [saveState, setSaveState] = useState("idle"); // idle | saving | saved
 
@@ -738,6 +754,12 @@ function SkillDetail({ skill, setView, c, onEnterHall }) {
             </div>
             <div style={{display:"flex", flexDirection:"column", gap:10, marginBottom:28}}>
               <button className="btn btn-accent" onClick={onEnterHall}>Enter Study Hall</button>
+              {skill.subjectId === "programming" && (
+                <button className="btn btn-ghost" onClick={() => setView("python-lab")}
+                  style={{ borderColor: c.green, color: c.green }}>
+                  ⚡ Python Practice Lab
+                </button>
+              )}
               {skill.due>0 && <button className="btn btn-ghost" onClick={()=>setView("flashcards")}>Review {skill.due} Flashcards</button>}
               <button className="btn btn-ghost" onClick={()=>setView("dashboard")}>Back to Curriculum</button>
             </div>
@@ -1730,6 +1752,519 @@ function Progress({ c, skills }) {
   );
 }
 
+/* ─── Python Practice Lab ─────────────────────────────────────── */
+function PythonLab({ c, setView, skills, setActiveSkill }) {
+  const LS_KEY = "apti-python-lab-done-v1";
+
+  const [phaseIdx,  setPhaseIdx]  = useState(0);
+  const [modIdx,    setModIdx]    = useState(0);
+  const [tab,       setTab]       = useState("notes");
+  const [noteIdx,   setNoteIdx]   = useState(0);
+  const [exOpen,    setExOpen]    = useState(null);
+  const [solShown,  setSolShown]  = useState({});
+  const [exDone,    setExDone]    = useState({});
+  const [quizSt,    setQuizSt]    = useState({ active: false, idx: 0, score: 0, answers: [], qs: [] });
+
+  useEffect(() => {
+    try { const s = localStorage.getItem(LS_KEY); if (s) setExDone(JSON.parse(s)); } catch {}
+  }, []);
+  useEffect(() => {
+    try { localStorage.setItem(LS_KEY, JSON.stringify(exDone)); } catch {}
+  }, [exDone]);
+
+  const phase  = PYTHON_PHASES[phaseIdx];
+  const mod    = phase.modules[modIdx];
+  const notes  = mod.notes || [];
+  const exs    = mod.exercises || [];
+  const accent = c[phase.accent] || c.accent;
+
+  const totalEx = PYTHON_PHASES.reduce((s,p) => s + p.modules.reduce((s2,m) => s2 + (m.exercises||[]).length, 0), 0);
+  const doneN   = Object.values(exDone).filter(Boolean).length;
+
+  const goPhase = (pi) => { setPhaseIdx(pi); setModIdx(0); setTab("notes"); setNoteIdx(0); setExOpen(null); setSolShown({}); };
+  const goMod   = (mi) => { setModIdx(mi); setTab("notes"); setNoteIdx(0); setExOpen(null); setSolShown({}); };
+
+  // Find matching Apti skill for "Study with Apti" button
+  const aptiSkill = mod.aptiSkillId
+    ? skills.find(s => s.id === mod.aptiSkillId)
+    : null;
+
+  const studyWithApti = () => {
+    if (aptiSkill && !aptiSkill.locked) {
+      setActiveSkill({ ...aptiSkill, subjectId: "programming", subs: [], subMastery: [], subIds: [] });
+      setView("session");
+    }
+  };
+
+  // Quiz helpers
+  const startQuiz = () => {
+    const shuffled = [...PYTHON_QUIZ].sort(() => Math.random() - 0.5).slice(0, 10);
+    setQuizSt({ active: true, idx: 0, score: 0, answers: [], qs: shuffled });
+    setTab("quiz");
+  };
+  const answerQuiz = (i) => {
+    const q = quizSt.qs[quizSt.idx];
+    const ok = i === q.a;
+    const answers = [...quizSt.answers, { text: q.q, ok, correct: q.opts[q.a] }];
+    const score = quizSt.score + (ok ? 1 : 0);
+    if (quizSt.idx + 1 >= quizSt.qs.length) {
+      setQuizSt({ active: false, idx: quizSt.idx + 1, score, answers, qs: quizSt.qs });
+    } else {
+      setQuizSt({ ...quizSt, idx: quizSt.idx + 1, score, answers });
+    }
+  };
+
+  // Tip of the day
+  const tip = PYTHON_TIPS[Math.floor(Date.now() / 86_400_000) % PYTHON_TIPS.length];
+
+  return (
+    <div className="fade">
+      {/* ── Header ── */}
+      <div className="header">
+        <button onClick={() => setView("dashboard")} className="mono"
+          style={{ background:"none", border:"none", color:c.faint, cursor:"pointer", fontSize:11, letterSpacing:"0.1em", marginBottom:18, padding:0 }}>
+          ← BACK TO DASHBOARD
+        </button>
+        <div className="header-rule">
+          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", flexWrap:"wrap", gap:12 }}>
+            <div>
+              <div className="kicker">Python Practice Lab</div>
+              <h1 className="display" style={{ fontSize:42, color:c.ink, marginTop:8 }}>⚡ Python Mastery</h1>
+              <p className="body" style={{ fontSize:16, color:c.sub, marginTop:10, maxWidth:540, lineHeight:1.6 }}>
+                Curated notes, engineering exercises, and a quiz — use alongside Apti's AI lessons.
+              </p>
+            </div>
+            <div style={{ display:"flex", flexDirection:"column", alignItems:"flex-end", gap:8 }}>
+              <div className="mono" style={{ fontSize:11, color:c.faint }}>
+                {doneN} / {totalEx} exercises done
+              </div>
+              <div style={{ width:140, height:3, background:c.line, borderRadius:99, overflow:"hidden" }}>
+                <div className="bar" style={{ "--w": `${totalEx ? doneN/totalEx*100 : 0}%`, background: c.green }}/>
+              </div>
+              <button onClick={startQuiz} className="btn btn-ghost" style={{ fontSize:13 }}>
+                Knowledge Quiz
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* ── Tip ── */}
+        <div style={{ margin:"12px 0 0", padding:"10px 16px", background:c.bgAlt, borderRadius:3, borderLeft:`3px solid ${c.gold}` }}>
+          <span className="kicker" style={{ color:c.gold, marginRight:10 }}>TIP</span>
+          <span className="body" style={{ fontSize:13, color:c.sub }}>{tip}</span>
+        </div>
+
+        {/* ── Phase tabs ── */}
+        <div style={{ display:"flex", gap:6, marginTop:18, flexWrap:"wrap" }}>
+          {PYTHON_PHASES.map((p, pi) => (
+            <button key={p.id} onClick={() => goPhase(pi)}
+              style={{
+                padding:"7px 16px", borderRadius:3, border: pi===phaseIdx ? `1px solid ${c[p.accent]||c.accent}` : `1px solid ${c.line}`,
+                background: pi===phaseIdx ? `${c[p.accent]||c.accent}14` : "none",
+                color: pi===phaseIdx ? c[p.accent]||c.accent : c.sub,
+                cursor:"pointer", fontFamily:"'Spline Sans Mono',monospace", fontSize:11, letterSpacing:"0.05em",
+              }}>
+              {p.icon} {p.title}
+              <span className="mono" style={{ fontSize:9, opacity:0.7, marginLeft:6 }}>{p.weeks}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="content">
+        <div className="two-col">
+
+          {/* ── Left: module list ── */}
+          <div style={{ minWidth:0 }}>
+            <div style={{ borderBottom:`2px solid ${c.rule}`, paddingBottom:8, marginBottom:16 }}>
+              <h2 className="serif-h" style={{ fontSize:20, color:c.ink }}>{phase.icon} {phase.title}</h2>
+              <div className="body" style={{ fontSize:13, color:c.faint, marginTop:4 }}>{phase.description}</div>
+            </div>
+
+            {/* Module tabs */}
+            <div style={{ display:"flex", gap:4, flexWrap:"wrap", marginBottom:20 }}>
+              {phase.modules.map((m, mi) => (
+                <button key={m.id} onClick={() => goMod(mi)}
+                  style={{
+                    padding:"5px 12px", borderRadius:3,
+                    border: mi===modIdx ? `1px solid ${accent}` : `1px solid ${c.line}`,
+                    background: mi===modIdx ? `${accent}14` : "none",
+                    color: mi===modIdx ? accent : c.sub,
+                    cursor:"pointer", fontFamily:"'Spline Sans Mono',monospace", fontSize:11,
+                  }}>
+                  {m.id}
+                </button>
+              ))}
+            </div>
+
+            {/* Tab bar */}
+            <div style={{ display:"flex", gap:4, marginBottom:20, borderBottom:`1px solid ${c.line}`, paddingBottom:12 }}>
+              {["notes","exercises","resources","quiz"].map(t => (
+                <button key={t} onClick={() => t === "quiz" ? startQuiz() : setTab(t)}
+                  style={{
+                    padding:"6px 14px", borderRadius:3,
+                    border: tab===t && t!=="quiz" ? `1px solid ${c.ink}` : `1px solid ${c.line}`,
+                    background: tab===t && t!=="quiz" ? c.ink : "none",
+                    color: tab===t && t!=="quiz" ? c.bg : c.sub,
+                    cursor:"pointer", fontFamily:"'Spline Sans Mono',monospace", fontSize:11, letterSpacing:"0.05em",
+                    textTransform:"uppercase",
+                  }}>
+                  {t === "notes" ? "📖 Notes" : t === "exercises" ? "💻 Exercises" : t === "resources" ? "📚 Resources" : "🧪 Quiz"}
+                </button>
+              ))}
+            </div>
+
+            {/* ── NOTES tab ── */}
+            {tab === "notes" && (
+              <div>
+                <div style={{ display:"flex", alignItems:"baseline", justifyContent:"space-between", marginBottom:14 }}>
+                  <div>
+                    <div className="kicker" style={{ color:accent }}>Module {mod.id}</div>
+                    <h3 className="serif-h" style={{ fontSize:22, color:c.ink }}>{mod.title}</h3>
+                    <div className="mono" style={{ fontSize:10, color:c.faint, marginTop:2 }}>{mod.duration}</div>
+                  </div>
+                  {aptiSkill && (
+                    <button
+                      onClick={studyWithApti}
+                      disabled={aptiSkill.locked}
+                      className="btn btn-accent"
+                      style={{ fontSize:12, padding:"8px 14px", opacity: aptiSkill.locked ? 0.4 : 1 }}
+                      title={aptiSkill.locked ? "Unlock the prerequisite skill first" : "Open an AI lesson on this topic"}>
+                      {aptiSkill.locked ? "🔒 Locked" : "Study with Apti →"}
+                    </button>
+                  )}
+                </div>
+
+                {/* Note page tabs */}
+                {notes.length > 1 && (
+                  <div style={{ display:"flex", gap:3, marginBottom:14, flexWrap:"wrap" }}>
+                    {notes.map((n, ni2) => (
+                      <button key={ni2} onClick={() => setNoteIdx(ni2)}
+                        style={{
+                          padding:"4px 10px", borderRadius:3,
+                          border: ni2===noteIdx ? `1px solid ${accent}` : `1px solid ${c.line}`,
+                          background: ni2===noteIdx ? `${accent}18` : c.bgAlt,
+                          color: ni2===noteIdx ? accent : c.faint,
+                          cursor:"pointer", fontFamily:"'Spline Sans Mono',monospace", fontSize:10,
+                        }}>
+                        {ni2 + 1}
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                {notes.length > 0 ? (() => {
+                  const n = notes[noteIdx];
+                  return (
+                    <div className="paper" style={{ padding:"24px 28px", boxShadow:c.shadow }}>
+                      <h4 className="serif-h" style={{ fontSize:19, color:c.ink, marginBottom:14 }}>{n.title}</h4>
+                      <div className="body" style={{ fontSize:15, color:c.sub, lineHeight:1.75, whiteSpace:"pre-wrap", marginBottom: n.code ? 20 : 0 }}>
+                        {n.body}
+                      </div>
+                      {n.code && (
+                        <div style={{ marginBottom: n.afterCode ? 16 : 0 }}>
+                          <div className="kicker" style={{ marginBottom:8, fontSize:9 }}>EXAMPLE CODE</div>
+                          <pre style={{
+                            background:c.bgAlt, border:`1px solid ${c.line}`, borderRadius:3,
+                            padding:"16px 18px", fontSize:13, lineHeight:1.65, color:c.ink,
+                            fontFamily:"'Spline Sans Mono',monospace", overflowX:"auto", whiteSpace:"pre",
+                          }}><code>{n.code}</code></pre>
+                        </div>
+                      )}
+                      {n.afterCode && (
+                        <div style={{ padding:"10px 14px", borderLeft:`3px solid ${c.gold}`, background:c.bgAlt, borderRadius:"0 3px 3px 0" }}>
+                          <div className="body" style={{ fontSize:13, color:c.sub, lineHeight:1.65 }}>💡 {n.afterCode}</div>
+                        </div>
+                      )}
+                      {/* Pagination */}
+                      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginTop:24, paddingTop:16, borderTop:`1px solid ${c.line}` }}>
+                        <button onClick={() => setNoteIdx(n2 => Math.max(0, n2-1))} disabled={noteIdx===0}
+                          style={{ padding:"7px 18px", borderRadius:3, border:`1px solid ${c.line}`, background:"none", color:noteIdx===0?c.line:c.sub, cursor:noteIdx===0?"default":"pointer", fontFamily:"'Spline Sans Mono',monospace", fontSize:12 }}>
+                          ← Prev
+                        </button>
+                        <span className="mono" style={{ fontSize:10, color:c.faint }}>{noteIdx+1} / {notes.length}</span>
+                        {noteIdx < notes.length - 1 ? (
+                          <button onClick={() => setNoteIdx(n2 => n2+1)} className="btn btn-accent" style={{ fontSize:12, padding:"7px 18px" }}>
+                            Next →
+                          </button>
+                        ) : (
+                          <button onClick={() => setTab("exercises")} style={{ padding:"7px 18px", borderRadius:3, border:"none", background:c.green, color:"#fff", cursor:"pointer", fontFamily:"'Spline Sans Mono',monospace", fontSize:12, fontWeight:600 }}>
+                            Exercises →
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })() : (
+                  <div className="paper" style={{ padding:"40px 28px", textAlign:"center", color:c.faint }}>
+                    <div style={{ fontSize:40, marginBottom:12 }}>📖</div>
+                    <div className="body">Notes coming soon — jump to Exercises or Resources.</div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* ── EXERCISES tab ── */}
+            {tab === "exercises" && (
+              <div>
+                <div style={{ marginBottom:20 }}>
+                  <div className="kicker" style={{ color:accent }}>Module {mod.id} · {mod.title}</div>
+                  <h3 className="serif-h" style={{ fontSize:22, color:c.ink }}>Practice Exercises</h3>
+                  <div className="body" style={{ fontSize:13, color:c.faint, marginTop:6, lineHeight:1.6 }}>
+                    Type the code yourself — don't copy-paste. Reveal the solution only after a genuine attempt.
+                  </div>
+                </div>
+
+                {exs.length > 0 ? exs.map((ex, ei) => {
+                  const eid = `${mod.id}-${ei}`;
+                  const open = exOpen === ei;
+                  return (
+                    <div key={ei} className="paper" style={{ marginBottom:12, overflow:"hidden", boxShadow:"none", border:`1px solid ${open ? accent : c.line}` }}>
+                      <div onClick={() => setExOpen(open ? null : ei)}
+                        style={{ padding:"14px 20px", cursor:"pointer", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+                        <div style={{ display:"flex", alignItems:"center", gap:14 }}>
+                          <input type="checkbox" checked={!!exDone[eid]}
+                            onChange={e => { e.stopPropagation(); setExDone(d => ({...d, [eid]: !d[eid]})); }}
+                            style={{ accentColor: accent, width:16, height:16 }}
+                            onClick={e => e.stopPropagation()}
+                          />
+                          <div>
+                            <div className="serif-h" style={{ fontSize:16, color:c.ink }}>{ex.title}</div>
+                            <div className="mono" style={{ fontSize:10, color:c.faint, marginTop:2 }}>{ex.difficulty}</div>
+                          </div>
+                        </div>
+                        <span className="mono" style={{ fontSize:14, color:open ? accent : c.faint, transition:"transform .2s", display:"inline-block", transform: open?"rotate(180deg)":"none" }}>▾</span>
+                      </div>
+                      {open && (
+                        <div style={{ padding:"0 20px 20px", borderTop:`1px solid ${c.line}` }}>
+                          <div className="body" style={{ fontSize:14, color:c.sub, lineHeight:1.65, margin:"12px 0" }}>{ex.description}</div>
+                          <div className="kicker" style={{ marginBottom:8, fontSize:9 }}>STARTER CODE</div>
+                          <pre style={{
+                            background:c.bgAlt, border:`1px solid ${c.line}`, borderRadius:3,
+                            padding:"14px 16px", fontSize:12.5, lineHeight:1.65, color:c.ink,
+                            fontFamily:"'Spline Sans Mono',monospace", overflowX:"auto", whiteSpace:"pre",
+                          }}><code>{ex.starter}</code></pre>
+                          <div style={{ marginTop:14, display:"flex", gap:10, flexWrap:"wrap" }}>
+                            <button onClick={() => setSolShown(s => ({...s, [ei]: !s[ei]}))}
+                              style={{
+                                padding:"7px 16px", borderRadius:3, cursor:"pointer",
+                                border:`1px solid ${solShown[ei] ? accent : c.line}`,
+                                background: solShown[ei] ? `${accent}14` : "none",
+                                color: solShown[ei] ? accent : c.sub,
+                                fontFamily:"'Spline Sans Mono',monospace", fontSize:11,
+                              }}>
+                              {solShown[ei] ? "Hide Solution" : "Reveal Solution"}
+                            </button>
+                            <button onClick={() => setExDone(d => ({...d, [eid]: true}))}
+                              style={{ padding:"7px 16px", borderRadius:3, cursor:"pointer", border:`1px solid ${c.green}`, background:"none", color:c.green, fontFamily:"'Spline Sans Mono',monospace", fontSize:11 }}>
+                              Mark Complete ✓
+                            </button>
+                          </div>
+                          {solShown[ei] && (
+                            <div style={{ marginTop:12 }}>
+                              <div className="kicker" style={{ marginBottom:8, fontSize:9, color:c.green }}>SOLUTION</div>
+                              <pre style={{
+                                background:c.bgAlt, border:`1px solid ${c.green}30`, borderLeft:`3px solid ${c.green}`, borderRadius:3,
+                                padding:"14px 16px", fontSize:12.5, lineHeight:1.65, color:c.ink,
+                                fontFamily:"'Spline Sans Mono',monospace", overflowX:"auto", whiteSpace:"pre",
+                              }}><code>{ex.solution}</code></pre>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
+                }) : (
+                  <div className="paper" style={{ padding:"40px 28px", textAlign:"center", color:c.faint }}>
+                    <div style={{ fontSize:40, marginBottom:12 }}>💻</div>
+                    <div className="body">Exercises coming soon for this module.</div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* ── RESOURCES tab ── */}
+            {tab === "resources" && (
+              <div>
+                <div style={{ marginBottom:20 }}>
+                  <div className="kicker" style={{ color:accent }}>{phase.icon} {phase.title}</div>
+                  <h3 className="serif-h" style={{ fontSize:22, color:c.ink }}>Books & Resources</h3>
+                </div>
+
+                <div style={{ borderBottom:`2px solid ${c.rule}`, paddingBottom:8, marginBottom:14 }}>
+                  <h4 className="serif-h" style={{ fontSize:16, color:c.ink }}>Recommended Books</h4>
+                </div>
+                <div style={{ marginBottom:28 }}>
+                  {phase.books.map((b, i) => (
+                    <div key={i} className="paper" style={{ padding:"16px 20px", marginBottom:8, boxShadow:"none" }}>
+                      <div className="serif-h" style={{ fontSize:16, color:c.ink }}>{b.title}</div>
+                      <div className="body" style={{ fontSize:13, color:c.faint, marginTop:2 }}>by {b.author}</div>
+                      <div className="body" style={{ fontSize:13, color:c.sub, marginTop:4 }}>{b.note}</div>
+                      {b.url && (
+                        <a href={b.url} target="_blank" rel="noopener noreferrer"
+                          style={{ fontSize:12, color:accent, textDecoration:"none", marginTop:6, display:"inline-block", fontFamily:"'Spline Sans Mono',monospace" }}>
+                          {b.url} →
+                        </a>
+                      )}
+                    </div>
+                  ))}
+                </div>
+
+                <div style={{ borderBottom:`2px solid ${c.rule}`, paddingBottom:8, marginBottom:14 }}>
+                  <h4 className="serif-h" style={{ fontSize:16, color:c.ink }}>Online Resources</h4>
+                </div>
+                {phase.resources.map((r, i) => (
+                  <a key={i} href={r.url} target="_blank" rel="noopener noreferrer"
+                    style={{ display:"block", padding:"12px 16px", borderRadius:3, border:`1px solid ${c.line}`, marginBottom:6, textDecoration:"none", background:c.bgAlt }}>
+                    <div className="serif-h" style={{ fontSize:14, color:c.ink }}>{r.name}</div>
+                    <div className="mono" style={{ fontSize:10, color:c.faint, marginTop:3 }}>{r.url}</div>
+                  </a>
+                ))}
+              </div>
+            )}
+
+            {/* ── QUIZ tab ── */}
+            {tab === "quiz" && (
+              <div style={{ maxWidth:560 }}>
+                {quizSt.qs.length === 0 ? (
+                  <div style={{ textAlign:"center", padding:"40px 0" }}>
+                    <div style={{ fontSize:48, marginBottom:12 }}>🧪</div>
+                    <h3 className="serif-h" style={{ fontSize:24, color:c.ink, marginBottom:12 }}>Python Knowledge Quiz</h3>
+                    <div className="body" style={{ fontSize:15, color:c.sub, lineHeight:1.7, marginBottom:24, maxWidth:420, marginInline:"auto" }}>
+                      10 questions drawn randomly from {PYTHON_QUIZ.length} covering all four phases. No stakes — it's a self-check.
+                    </div>
+                    <button onClick={startQuiz} className="btn btn-accent">Start Quiz →</button>
+                  </div>
+                ) : !quizSt.active ? (
+                  <div>
+                    <div style={{ textAlign:"center", padding:"20px 0 28px" }}>
+                      <div style={{ position:"relative", display:"inline-block" }}>
+                        <Ring pct={quizSt.score/quizSt.qs.length*100} color={quizSt.score>=8?c.green:quizSt.score>=6?c.gold:c.accent} size={120} stroke={4}/>
+                        <div style={{ position:"absolute", inset:0, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center" }}>
+                          <span className="display" style={{ fontSize:36, color:c.ink }}>{quizSt.score}</span>
+                          <span className="kicker" style={{ fontSize:8 }}>/ {quizSt.qs.length}</span>
+                        </div>
+                      </div>
+                      <h3 className="serif-h" style={{ fontSize:22, color:c.ink, marginTop:16 }}>
+                        {quizSt.score >= 8 ? "Excellent." : quizSt.score >= 6 ? "Good progress." : "Keep practising."}
+                      </h3>
+                      <button onClick={startQuiz} className="btn btn-ghost" style={{ marginTop:16, fontSize:13 }}>Retry</button>
+                    </div>
+                    <div style={{ borderTop:`1px solid ${c.line}`, paddingTop:16 }}>
+                      {quizSt.answers.map((a, i) => (
+                        <div key={i} style={{
+                          display:"flex", gap:10, alignItems:"flex-start",
+                          padding:"9px 12px", borderRadius:3, marginBottom:4,
+                          background: a.ok ? `${c.green}14` : `${c.accent}10`,
+                          border:`1px solid ${a.ok ? c.green+"40" : c.accent+"30"}`,
+                        }}>
+                          <span className="mono" style={{ fontSize:13, color: a.ok ? c.green : c.accent, flexShrink:0 }}>{a.ok ? "✓" : "✗"}</span>
+                          <div>
+                            <div className="body" style={{ fontSize:13, color:c.ink }}>{a.text}</div>
+                            {!a.ok && <div className="mono" style={{ fontSize:11, color:c.sub, marginTop:2 }}>Correct: {a.correct}</div>}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : (() => {
+                  const q = quizSt.qs[quizSt.idx];
+                  return (
+                    <div>
+                      <div style={{ display:"flex", justifyContent:"space-between", marginBottom:12 }}>
+                        <span className="mono" style={{ fontSize:11, color:c.faint }}>Q {quizSt.idx+1} / {quizSt.qs.length}</span>
+                        <span className="mono" style={{ fontSize:11, color:c.green }}>Score: {quizSt.score}</span>
+                      </div>
+                      <div style={{ height:3, background:c.line, borderRadius:99, marginBottom:20, overflow:"hidden" }}>
+                        <div className="bar" style={{ "--w":`${quizSt.idx/quizSt.qs.length*100}%`, background:accent }}/>
+                      </div>
+                      <div className="serif-h" style={{ fontSize:20, color:c.ink, marginBottom:22, lineHeight:1.45 }}>{q.q}</div>
+                      {q.opts.map((opt, i) => (
+                        <button key={i} onClick={() => answerQuiz(i)}
+                          style={{
+                            display:"flex", alignItems:"center", gap:12, width:"100%", textAlign:"left",
+                            padding:"12px 16px", borderRadius:3, marginBottom:8, cursor:"pointer",
+                            border:`1px solid ${c.line}`, background:"none", color:c.ink,
+                          }}>
+                          <span className="mono" style={{
+                            fontSize:12, width:24, height:24, borderRadius:"50%",
+                            display:"flex", alignItems:"center", justifyContent:"center",
+                            border:`1px solid ${c.line}`, color:c.faint, flexShrink:0,
+                          }}>
+                            {String.fromCharCode(65+i)}
+                          </span>
+                          <span className="body" style={{ fontSize:15 }}>{opt}</span>
+                        </button>
+                      ))}
+                    </div>
+                  );
+                })()}
+              </div>
+            )}
+          </div>
+
+          {/* ── Right sidebar ── */}
+          <div>
+            {/* Module overview */}
+            <div className="paper" style={{ padding:"22px 24px", marginBottom:20, boxShadow:c.shadow }}>
+              <div className="kicker" style={{ marginBottom:14 }}>This Module</div>
+              {[
+                ["Module", mod.id],
+                ["Topic", mod.title],
+                ["Duration", mod.duration],
+                ["Notes", `${notes.length} sections`],
+                ["Exercises", `${exs.length} problems`],
+              ].map(([k,v]) => (
+                <div key={k} style={{ display:"flex", justifyContent:"space-between", padding:"8px 0", borderBottom:`1px solid ${c.line}` }}>
+                  <span className="body" style={{ fontSize:14, color:c.faint }}>{k}</span>
+                  <span className="serif-h" style={{ fontSize:14, color:c.ink }}>{v}</span>
+                </div>
+              ))}
+              {aptiSkill && !aptiSkill.locked && (
+                <button onClick={studyWithApti} className="btn btn-accent" style={{ width:"100%", marginTop:16, fontSize:13 }}>
+                  Study with Apti →
+                </button>
+              )}
+              {aptiSkill?.locked && (
+                <div className="body" style={{ fontSize:12, color:c.faint, marginTop:12, lineHeight:1.5 }}>
+                  🔒 Complete prerequisite skills to unlock an Apti session for this topic.
+                </div>
+              )}
+            </div>
+
+            {/* Roadmap */}
+            <div className="paper" style={{ padding:"22px 24px", boxShadow:c.shadow }}>
+              <div className="kicker" style={{ marginBottom:14 }}>12-Week Roadmap</div>
+              {PYTHON_PHASES.map((p, pi) => (
+                <div key={p.id} style={{ marginBottom:14 }}>
+                  <div className="mono" style={{ fontSize:10, color:c[p.accent]||c.accent, marginBottom:6, letterSpacing:"0.08em" }}>
+                    PHASE {p.id} · {p.weeks}
+                  </div>
+                  {p.modules.map((m, mi) => {
+                    const active = pi === phaseIdx && mi === modIdx;
+                    return (
+                      <div key={m.id} onClick={() => { goPhase(pi); goMod(mi); }}
+                        style={{
+                          display:"flex", alignItems:"center", gap:10, padding:"6px 8px", borderRadius:3,
+                          marginBottom:3, cursor:"pointer",
+                          background: active ? `${c[p.accent]||c.accent}18` : "none",
+                        }}>
+                        <span className="mono" style={{ fontSize:10, color:active ? c[p.accent]||c.accent : c.faint, width:28 }}>{m.id}</span>
+                        <span className="body" style={{ fontSize:13, color: active ? c.ink : c.sub }}>{m.title}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              ))}
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ─── Root ────────────────────────────────────────────────────── */
 export default function App() {
   const [mode,          setMode]          = useState("light");
@@ -1739,6 +2274,7 @@ export default function App() {
   const [subjects,      setSubjects]      = useState([]);
   const [activeSubject, setActiveSubject] = useState("mathematics");
   const [refreshKey,    setRefreshKey]    = useState(0);
+  const [labPhase,      setLabPhase]      = useState(0);
   const c = THEMES[mode];
 
   const fetchData = () => {
@@ -1778,11 +2314,12 @@ export default function App() {
             activeSubject={activeSubject} setActiveSubject={setActiveSubject}
           />
           <main className="main">
-            {view==="dashboard"  && <Dashboard setView={setView} setActiveSkill={setActiveSkill} c={c} mode={mode} setMode={setMode} skills={skills} subjects={subjects} activeSubject={activeSubject} setActiveSubject={setActiveSubject} onEnterHall={handleEnterHall}/>}
-            {view==="skill"      && <SkillDetail skill={activeSkill} setView={setView} c={c} onEnterHall={handleEnterHall}/>}
-            {view==="session"    && <StudyHall setView={setView} c={c} activeSkill={activeSkill} onComplete={()=>setRefreshKey(k=>k+1)}/>}
-            {view==="flashcards" && <Flashcards setView={setView} c={c}/>}
-            {view==="progress"   && <Progress c={c} skills={skills} subjects={subjects}/>}
+            {view==="dashboard"   && <Dashboard setView={setView} setActiveSkill={setActiveSkill} c={c} mode={mode} setMode={setMode} skills={skills} subjects={subjects} activeSubject={activeSubject} setActiveSubject={setActiveSubject} onEnterHall={handleEnterHall}/>}
+            {view==="skill"       && <SkillDetail skill={activeSkill} setView={setView} c={c} onEnterHall={handleEnterHall} setLabPhase={setLabPhase}/>}
+            {view==="session"     && <StudyHall setView={setView} c={c} activeSkill={activeSkill} onComplete={()=>setRefreshKey(k=>k+1)}/>}
+            {view==="flashcards"  && <Flashcards setView={setView} c={c}/>}
+            {view==="progress"    && <Progress c={c} skills={skills} subjects={subjects}/>}
+            {view==="python-lab"  && <PythonLab c={c} setView={setView} skills={skills} setActiveSkill={setActiveSkill}/>}
           </main>
           <BottomNav view={view} setView={setView} c={c}/>
         </div>
