@@ -9,8 +9,11 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
+from pydantic import ValidationError
+
 from app.db.connection import get_pool
 from app.apti import client as apti
+from app.apti.schemas import StagedLesson
 from app.scheduler.sm2 import mastery_delta, GradedOpen, GradedMCQ
 
 router = APIRouter(prefix="/api/session", tags=["session"])
@@ -158,6 +161,12 @@ async def start_session(body: StartRequest):
         )
     except Exception as e:
         raise HTTPException(502, f"AI service error: {e}")
+
+    # Validate against the staged lesson schema
+    try:
+        StagedLesson.model_validate(lesson)
+    except ValidationError as e:
+        raise HTTPException(502, f"Lesson schema mismatch: {e}")
 
     # Persist session
     session_id = str(uuid.uuid4())

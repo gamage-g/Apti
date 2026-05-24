@@ -25,7 +25,7 @@ def _model() -> str:
 # Per-role settings from the design doc.
 # Grader/Gatekeeper/Scheduler at 0.0 (deterministic); Examiner 0.4; Lecturer/Cartographer 0.5.
 _ROLE_SETTINGS = {
-    "lecturer":          {"temperature": 0.5, "max_tokens": 1000},
+    "lecturer":          {"temperature": 0.5, "max_tokens": 2200},
     "examiner":          {"temperature": 0.4, "max_tokens": 1500},
     "grader":            {"temperature": 0.0, "max_tokens": 1000},
     "cartographer":      {"temperature": 0.5, "max_tokens": 1000},

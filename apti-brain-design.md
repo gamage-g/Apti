@@ -78,28 +78,70 @@ Six roles. Each is a separate API call with its own system prompt.
 **System prompt (after constitution):**
 
 ```
-ROLE: Lecturer. Produce one focused micro-lesson on the given topic.
+ROLE: Lecturer. Produce one guided, multi-stage lesson on the given topic.
 
-The lesson has exactly three layers, in this order:
-1. intuition — the single core idea in plain language. What it means, why it
-   exists. 2-3 sentences. This is the most important field.
-2. analogy — one concrete, real-world analogy, ideally with an engineering
-   flavour. 2-3 sentences.
-3. formal — the precise statement: definitions, the key formula, and what each
-   part means. Correct and complete but not bloated.
+A lesson is NOT one block of text. It is a SEQUENCE OF SHORT STAGES the learner
+moves through one at a time. Depth comes from the progression, not from length.
+Each stage is small — a few sentences or one worked step. Never a wall of text.
 
-Keep total length tight — this is a single sitting, not a textbook chapter.
+Produce these stages, in order:
+
+1. hook        — why this matters; a question it answers or a problem it solves.
+                 1-2 sentences. Make them want to know.
+2. intuition   — the single core idea in plain language: what it means, why it
+                 exists. 2-3 sentences. The most important stage.
+3. analogy     — one concrete real-world/engineering analogy. 2-3 sentences.
+4. build       — develop the idea in 2-4 SMALL ordered steps. Each step adds one
+                 piece and says why. This is where formal notation/formulas are
+                 introduced, gradually, not dumped.
+5. worked      — ONE fully worked example. Show the REASONING, not just the
+                 answer: what you notice, which method and why, each step, the
+                 result. This is how an expert thinks aloud.
+6. practice    — ONE problem for the learner to solve themselves. Provide a
+                 progressive hint chain (3 hints, increasing in directness) and
+                 the full solution, but these are revealed only on request by the
+                 frontend. The problem must be solvable from the stages above.
+7. recall      — 1-2 quick check questions the learner answers between finishing
+                 the lesson and the full quiz. Short, retrieval-focused.
+8. connections — how this links to what they already know and what it unlocks
+                 next. 1-2 sentences.
+
+Adapt examples to the subject (maths/EE/programming) per your constitution.
+Emphasise the learner's recent_struggles where relevant.
+Wrap all mathematical expressions in LaTeX delimiters: $...$ for inline, $$...$$ for display.
+Wrap code examples in fenced blocks with a language tag: ```python ... ```
 
 Return JSON only:
 {
   "topic": string,
-  "intuition": string,
-  "analogy": string,
-  "formal": string,
-  "key_terms": [ { "term": string, "meaning": string } ],   // 2-4 terms
-  "watch_out": string   // one common misconception to avoid
+  "stages": {
+    "hook": string,
+    "intuition": string,
+    "analogy": string,
+    "build": [ { "step": string, "why": string } ],
+    "worked": {
+      "problem": string,
+      "reasoning": [ string ],
+      "answer": string
+    },
+    "practice": {
+      "problem": string,
+      "hints": [ string ],
+      "solution": string
+    },
+    "recall": [ { "q": string, "a": string } ]
+  },
+  "key_terms": [ { "term": string, "meaning": string } ],
+  "watch_out": string,
+  "connections": string
 }
 ```
+
+**Design intent:** every stage is short, but there are eight of them, and two
+(`practice`, `recall`) require the learner to DO something, not just read. That
+is what fixes "too shallow" and "not enough practice" without producing a
+textbook chapter. The frontend reveals stages progressively and gates `practice`
+hints/solution behind explicit taps so the learner attempts it first.
 
 **Input the backend provides:**
 ```json
@@ -113,7 +155,21 @@ Return JSON only:
 }
 ```
 
-`recent_struggles` is what makes it adaptive — Apti emphasises exactly where this learner has been weak.
+**Frontend implications (Study Hall):**
+- Stages render ONE at a time with a "Continue" between them — a guided arc, not
+  a scroll. This is what makes it feel structured and deep.
+- The `practice` stage shows only the problem first. Hints reveal one at a time
+  on tap (escalating), and the solution is gated behind "Show solution" so the
+  learner attempts it first. Whether they used hints/solution is a useful signal
+  — log it (attempted-unaided > used-hints > revealed-solution) and feed it into
+  the mastery picture, same spirit as response latency.
+- The `recall` checks happen before the formal quiz, as a low-stakes warm-up.
+- Render math as LaTeX and code as syntax-highlighted blocks (see §5 notes).
+
+**Cost note:** this is still ONE Lecturer call per topic — it returns the whole
+staged lesson as one JSON object. More tokens than the old 3-field lesson, but
+one call, and cached by the constitution prefix. Bump this role's max_tokens
+(see §5).
 
 ---
 
@@ -146,10 +202,10 @@ Return JSON only:
       "layer": "recognise" | "apply" | "reason",
       "type": "mcq" | "open",
       "prompt": string,
-      "options": [string] | null,        // null for open questions
-      "correct_index": number | null,    // null for open questions
-      "model_answer": string | null,     // for open questions, what good looks like
-      "explanation": string              // why the answer is right
+      "options": [string] | null,
+      "correct_index": number | null,
+      "model_answer": string | null,
+      "explanation": string
     }
   ]
 }
@@ -206,11 +262,11 @@ Return JSON only:
   "results": [
     {
       "question_id": string,
-      "intuition": number,    // 0.0-1.0
-      "method": number,       // 0.0-1.0
-      "accuracy": number,     // 0.0-1.0
+      "intuition": number,
+      "method": number,
+      "accuracy": number,
       "verdict": "mastered" | "fragile" | "misunderstood",
-      "feedback": string      // one specific, kind sentence
+      "feedback": string
     }
   ]
 }
@@ -221,39 +277,25 @@ and auditable. Suggested formula:
 
 ```python
 def mastery_delta(graded_results, mcq_results, response_times, baselines):
-    # Combine LLM-graded open answers + code-graded MCQs into one delta.
     score = 0.0
     n = 0
-    for r in graded_results:                 # open answers
-        # weight understanding over raw accuracy
+    for r in graded_results:
         q = 0.5*r["intuition"] + 0.3*r["method"] + 0.2*r["accuracy"]
         score += q; n += 1
-    for m in mcq_results:                    # mcqs: 1.0 correct, 0.0 wrong
+    for m in mcq_results:
         score += 1.0 if m["correct"] else 0.0; n += 1
     if n == 0: return 0
-    avg = score / n                          # 0.0 - 1.0
-
-    # Latency as a CODE signal, using per-question baselines (median times),
-    # not an LLM guess. Slow-but-correct dampens the gain (fragile knowledge).
+    avg = score / n
     fragile = is_slow_relative_to_baseline(response_times, baselines)
-
-    raw = (avg - 0.5) * 30                    # maps 0.0->-15, 0.5->0, 1.0->+15
+    raw = (avg - 0.5) * 30
     if fragile and raw > 0:
-        raw *= 0.6                            # fragile mastery counts for less
+        raw *= 0.6
     return round(max(-10, min(15, raw)))
 ```
-
-**Why this matters:** the three-dimension split is the spine of the system. But
-the *scoring* must be deterministic code so the same performance always moves
-the needle the same amount. The LLM judges understanding; code does arithmetic.
 
 ---
 
 ### 3.4 Cartographer — makes flashcards
-
-When a skill crosses the mastery threshold, it graduates into retention. The Cartographer turns its key ideas into intuition-style flashcards.
-
-**System prompt (after constitution):**
 
 ```
 ROLE: Cartographer. Turn a mastered skill into durable flashcards.
@@ -262,8 +304,7 @@ Each card has a layered structure matching the learner's intuition-first style:
 - front: a minimal trigger (a question, term, or prompt). Short.
 - back: the intuition-level answer FIRST, then the precise detail.
 
-Make 3-6 cards per skill. Each card tests ONE retrievable nugget. Avoid cards
-that ask for lists or essays — retention cards should be answerable in seconds.
+Make 3-6 cards per skill. Each card tests ONE retrievable nugget.
 
 Return JSON only:
 {
@@ -272,8 +313,8 @@ Return JSON only:
       "id": string,
       "skill": string,
       "front": string,
-      "back": string,           // intuition line, then \n\n, then the detail
-      "initial_interval_days": number   // suggest 1-3 for a fresh card
+      "back": string,
+      "initial_interval_days": number
     }
   ]
 }
@@ -283,48 +324,22 @@ Return JSON only:
 
 ### 3.5 Scheduler — spaced repetition (mostly NOT an LLM)
 
-**Important design decision:** the core scheduling math should be **deterministic code**, not an LLM call. LLMs are bad at arithmetic and you don't want to pay tokens to compute a date. Use a proven algorithm (SM-2, the Anki base) in plain Python.
-
-Apti's role here is *advisory only* — it can nudge intervals based on cross-skill connections that pure SM-2 can't see.
-
-**The deterministic core (Python, no LLM):**
+The core scheduling math is **deterministic code** (SM-2). The LLM is advisory only.
 
 ```python
-# SM-2 style. Runs on every review. Pure function, instant, free.
 def next_interval(card, grade):
-    # grade: 0 = forgot, 1 = partial, 2 = mastered
     if grade == 0:
         card.interval = 1
         card.ease = max(1.3, card.ease - 0.2)
     elif grade == 1:
         card.interval = max(1, round(card.interval * 1.2))
         card.ease = max(1.3, card.ease - 0.05)
-    else:  # mastered
+    else:
         card.interval = round(card.interval * card.ease)
         card.ease = card.ease + 0.1
     card.due_date = today() + days(card.interval)
     return card
 ```
-
-**Apti's optional advisory layer (LLM, runs occasionally — e.g. nightly):**
-
-```
-ROLE: Scheduler advisor. You see the learner's skill graph and recent
-performance. Suggest ADJUSTMENTS to the algorithmic schedule based on
-conceptual connections the algorithm can't see.
-
-Example: if they're forgetting "derivatives", flag that "limits" (its
-prerequisite) may also need review even if not yet due.
-
-Return JSON only:
-{
-  "adjustments": [
-    { "skill": string, "action": "review_sooner" | "ok", "reason": string }
-  ]
-}
-```
-
-This keeps cost near zero (algorithm does the heavy lifting) while still getting Apti's intelligence where it adds real value.
 
 ---
 
@@ -339,15 +354,12 @@ Base the decision on the PATTERN of answers, not a single score. Look for:
 - intuition scores, not just accuracy
 - whether they handled the "reason"-layer question
 
-Be encouraging but honest. Holding someone back to solidify a foundation is a
-kindness, not a punishment.
-
 Return JSON only:
 {
   "unlock": boolean,
-  "confidence": number,        // 0-1
-  "message": string,           // warm explanation to the learner
-  "focus_if_held": [string]    // what to shore up, if not unlocking
+  "confidence": number,
+  "message": string,
+  "focus_if_held": [string]
 }
 ```
 
@@ -355,121 +367,36 @@ Return JSON only:
 
 ## 3b. Multi-Subject Architecture (Math → EE → Programming → anything)
 
-Apti is domain-agnostic by design: every role generates content for *whatever
-subject and topic it is given*. So adding a subject is a CONTENT change (new DB
-rows + a prerequisite graph), not new machinery.
-
-### The hierarchy gains one level
-
-```
-Subject (Mathematics)        → Skill (Algebra)          → Sub-skill (Logarithms)
-Subject (Electrical Eng.)    → Skill (Circuit Analysis) → Sub-skill (Ohm's Law)
-Subject (Programming)        → Skill (Python Basics)    → Sub-skill (Loops)
-```
-
 ### Schema additions
 
-- **`subjects`** table: `id`, `name`, `description`, `display_order`,
-  optional `unlock_requirement`.
+- **`subjects`** table: `id`, `name`, `description`, `display_order`, optional `unlock_requirement`.
 - **`skills`** gains a `subject_id` foreign key.
-- **`prerequisites`** table: lets any skill OR subject be gated behind one or
-  more others. Columns roughly: `id`, `target_type` ("skill"|"subject"),
-  `target_id`, `required_id`, `required_type`, `threshold` (mastery % needed).
+- **`prerequisites`** table: gates any skill or subject behind others with a mastery threshold.
 
 ### Unlock logic (deterministic code, not LLM)
 
-A skill/subject is **locked** until every prerequisite's mastery crosses the
-configured `threshold`. Compute this in code from the mastery table — the
-frontend's existing `locked` flag becomes data-driven instead of hardcoded.
-Keep the threshold a single config value (e.g. `UNLOCK_THRESHOLD = 70`).
+Locked state computed live from prerequisites + mastery. `UNLOCK_THRESHOLD = 70`.
 
-### The planned track structure
+### Track structure
 
-- **Mathematics** — the foundation. No prerequisites. (Already built.)
-- **Programming (Python)** — **no prerequisites; runs in parallel from day one.**
-  This matches the original intent: Python reinforces math by making it tangible
-  (implement a derivative, use NumPy for linear algebra, analyse data for stats).
-- **Electrical Engineering** — gated behind math. e.g. "Circuit Analysis"
-  requires Algebra + Calculus; "Signals" requires Trigonometry + Calculus.
-  Within EE, "AC Circuits" requires "DC Circuits", etc.
-
-### Seeding guidance — keep it SHALLOW
-
-Seed only the **skill skeleton**: subject names, skill names, and the
-prerequisite graph. Do NOT hand-author lesson content — Apti generates lessons
-live when the learner opens a topic. The seed exists so the skill tree renders
-and the unlock logic has something to gate.
-
-Suggested starter seeds:
-- **Electrical Engineering:** DC Circuits, AC Circuits, Circuit Analysis,
-  Electromagnetism, Signals.
-- **Programming:** Python Basics, Data Structures, Algorithms, Projects.
-
-### Note on Apti's voice per subject
-
-The constitution (§2) is now subject-aware: maths gets worked numeric examples,
-EE gets circuits/units, programming gets short runnable code snippets. When you
-pass context to any Apti role, include the `subject` field in the input JSON so
-it picks the right register. For programming especially, the Lecturer's `formal`
-field and examples should contain real, runnable code — not just description.
+- **Mathematics** — foundation, no prerequisites.
+- **Programming (Python)** — no prerequisites, parallel from day one.
+- **Electrical Engineering** — gated behind math prerequisites per skill.
 
 ---
 
-## 4. The API Contract (frontend ↔ backend)
-
-```
-Frontend  ——HTTP——>  Your FastAPI backend  ——DeepSeek API——>  Apti
-                              |
-                              └——> PostgreSQL (state: scores, schedule, history)
-```
-
-### Endpoints
+## 4. The API Contract
 
 ```
 GET  /api/subjects
-  → reads DB (no LLM)
-  ← { subjects: [{ id, name, description, locked, progress }] }
-
 GET  /api/subjects/{subject_id}/skills
-  → reads DB (no LLM); locked state computed from prerequisites + mastery
-  ← { skills: [{ id, label, mastery, locked, due }] }
-
-POST /api/session/start
-  body: { skill_id, topic_id }
-  → calls Lecturer
-  ← { lesson: {...}, session_id }
-
-POST /api/session/quiz
-  body: { session_id }
-  → calls Examiner
-  ← { questions: [...] }
-
-POST /api/session/submit
-  body: { session_id, answers: [{ question_id, value, response_time_ms }] }
-  → 1. code grades MCQ answers (compare to correct_index)
-    2. LLM Grader scores only the open answers
-    3. code computes mastery_delta from both (see 3.3 formula)
-    4. LLM Gatekeeper decides unlock from the pattern
-    5. update DB
-  ← { open_results: [...], mcq_results: [...], mastery_delta,
-      new_mastery, unlock_decision, summary }
-
+POST /api/session/start   → { lesson: StagedLesson, session_id }
+POST /api/session/quiz    → { questions: [...] }
+POST /api/session/submit  → { open_results, mcq_results, mastery_delta, new_mastery, unlock_decision }
 GET  /api/reviews/due
-  → reads DB (no LLM)
-  ← { cards: [...] }
-
 POST /api/reviews/grade
-  body: { card_id, grade }      // 0/1/2
-  → runs SM-2 (no LLM), updates DB
-  ← { next_due_date, interval_days }
-
 POST /api/skill/graduate
-  body: { skill_id }
-  → calls Cartographer
-  ← { cards: [...] }
 ```
-
-**Cost note:** only 4 of 7 operations hit the LLM. Reviews (the most frequent action) are pure database + arithmetic — free and instant. This is deliberate: it keeps Apti cheap to run at scale.
 
 ---
 
@@ -477,41 +404,30 @@ POST /api/skill/graduate
 
 | Setting | Value | Why |
 |---------|-------|-----|
-| Model | `deepseek-chat` | Cheap, capable for this |
-| temperature (Lecturer, Cartographer) | 0.5 | A little variety in explanations/cards |
-| temperature (Examiner) | 0.4 | Fresh questions, still on-topic |
-| temperature (Grader, Gatekeeper) | 0.0 | Grading MUST be deterministic and repeatable |
+| Model | `deepseek-v4-flash` | Current model ID |
+| temperature (Lecturer, Cartographer) | 0.5 | Variety in explanations |
+| temperature (Examiner) | 0.4 | Fresh questions, on-topic |
+| temperature (Grader, Gatekeeper) | 0.0 | Deterministic grading |
 | response_format | `json_object` | Forces valid JSON |
-| max_tokens | 1000 (lessons), 800 (quiz), 500 (grading) | Capped per role to control cost |
-| System prompt | constitution + role | Always both |
+| max_tokens | 2200 (lessons), 1500 (quiz), 1000 (grading), 500 (gatekeeper) | Staged lessons are larger |
 
-**Validation is mandatory.** DeepSeek's `json_object` mode guarantees valid JSON
-syntax but NOT that it matches your schema. Validate every response against a
-schema (use Pydantic models in FastAPI). On failure: retry once with a stricter
-"return ONLY the JSON schema, nothing else" reminder, then fall back gracefully
-(e.g. serve a cached lesson, or a generic message) rather than crashing.
+**Math/code rendering:** lessons contain LaTeX (`$...$`, `$$...$$`) and fenced code blocks. Frontend renders math with KaTeX and code as highlighted blocks.
 
-**Note on `deepseek-chat`:** confirm the current model name and that it supports
-`json_object` response format when you build — DeepSeek's model names and
-features change. Check their docs at build time rather than trusting this table.
+**Validation is mandatory.** Validate every response against Pydantic schemas. On failure: retry once with a stricter prompt, then raise 502.
 
 ---
 
-## 6. Build Order (for Claude Code)
+## 6. Build Order
 
-A suggested sequence so each step works before the next:
-
-1. **DB schema** — skills, sub_skills, sessions, cards, reviews, mastery.
-2. **Apti client** — one function per role; constitution + role prompt + JSON validation + retry.
-3. **The deterministic SM-2 scheduler** — pure functions, unit-tested. No LLM.
-4. **FastAPI endpoints** — wire the contract above.
-5. **Connect the frontend** — swap the hardcoded lesson/quiz data for real fetch() calls.
-6. **PWA + push notifications** — service worker, FCM, study-window scheduling.
-
-Start with 1–3 (no AI needed, fully testable), then 2, then connect. Get the skeleton solid before the brain goes in.
+1. DB schema
+2. Apti client
+3. SM-2 scheduler
+4. FastAPI endpoints
+5. Connect frontend
+6. PWA + push notifications
 
 ---
 
 ## 7. The One Thing to Get Right
 
-If you remember nothing else: **the Grader's three-dimension signal (intuition / method / accuracy) is the spine of the whole system.** It's what separates EngineIQ from a flashcard app. It feeds mastery scores, scheduling, and progression. Spend your prompt-tuning effort there.
+The Grader's three-dimension signal (intuition / method / accuracy) is the spine of the whole system. It feeds mastery scores, scheduling, and progression. Spend your prompt-tuning effort there.
