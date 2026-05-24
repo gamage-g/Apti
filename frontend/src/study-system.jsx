@@ -1558,7 +1558,7 @@ function StudyHall({ setView, c, activeSkill, onComplete }) {
         )}
 
         <div style={{display:"flex", gap:12, justifyContent:"center", flexWrap:"wrap"}}>
-          <button className="btn btn-ghost" onClick={()=>{ setPhase("lesson"); setAnswers([]); setQIdx(0); setSel(null); }}>
+          <button className="btn btn-ghost" onClick={()=>{ setPhase("lesson"); setAnswers([]); setQIdx(0); setSel(null); setOpenText(""); setStageIdx(0); setPracticeStep("problem"); setHintsShown(0); setPracticeOut("unaided"); setRecallIdx(0); setRecallShown(false); setGenRevealed({}); }}>
             Revisit Lecture
           </button>
           <button className="btn btn-accent" onClick={()=>{ onComplete(); setView("dashboard"); }}>

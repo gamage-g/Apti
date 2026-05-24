@@ -229,9 +229,13 @@ async def start_session(body: StartRequest):
 
 # ─── POST /api/session/quiz ───────────────────────────────────────────────────
 
+class QuizRequest(BaseModel):
+    session_id: str
+
+
 @router.post("/quiz")
-async def generate_quiz(body: dict):
-    session_id: str = body.get("session_id", "")
+async def generate_quiz(body: QuizRequest):
+    session_id: str = body.session_id
     pool = get_pool()
 
     session = await pool.fetchrow(
@@ -262,12 +266,15 @@ async def generate_quiz(body: dict):
     except ValidationError as e:
         raise HTTPException(502, f"Quiz schema mismatch: {e}")
 
-    # Prefix question IDs with session_id so they're globally unique across sessions.
-    # DeepSeek reuses short IDs like "q1"–"q4"; without this, ON CONFLICT silently
-    # drops inserts and submit finds no questions for the new session.
+    # Each quiz attempt gets its own 8-char UUID prefix so re-quizzing the same
+    # session never collides with previously stored questions in session_questions.
+    # DeepSeek reuses short IDs like "q1"–"q4" across calls; without a fresh
+    # prefix, ON CONFLICT would silently keep old rows and the grader would use
+    # stale correct_index / model_answer values.
+    attempt_prefix = str(uuid.uuid4())[:8]
     questions_out = []
     for q in quiz.get("questions", []):
-        stable_id = f"{session_id}:{q['id']}"
+        stable_id = f"{session_id}:{attempt_prefix}:{q['id']}"
         await pool.execute(
             """
             INSERT INTO session_questions

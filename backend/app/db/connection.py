@@ -14,7 +14,7 @@ class Settings(BaseSettings):
     deepseek_api_key: str = ""
     cors_origin: str = "http://localhost:5173"  # comma-separated list for multiple origins
     # Verify current model IDs and pricing at https://api-docs.deepseek.com/quick_start/pricing
-    deepseek_model: str = "deepseek-v4-flash"
+    deepseek_model: str = "deepseek-chat"
     # VAPID keys for Web Push — base64-encoded PEM private key, raw public key
     vapid_private_key: str = ""
     vapid_public_key: str = ""
