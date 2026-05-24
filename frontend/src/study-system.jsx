@@ -2346,7 +2346,7 @@ export default function App() {
           />
           <main className="main">
             {view==="dashboard"   && <Dashboard setView={setView} setActiveSkill={setActiveSkill} c={c} mode={mode} setMode={setMode} skills={skills} subjects={subjects} activeSubject={activeSubject} setActiveSubject={setActiveSubject} onEnterHall={handleEnterHall}/>}
-            {view==="skill"       && <SkillDetail skill={activeSkill} setView={setView} c={c} onEnterHall={handleEnterHall}/>}
+            {view==="skill"       && <SkillDetail skill={skills.find(s=>s.id===activeSkill?.id)||activeSkill} setView={setView} c={c} onEnterHall={handleEnterHall}/>}
             {view==="session"     && <StudyHall setView={setView} c={c} activeSkill={activeSkill} onComplete={()=>setRefreshKey(k=>k+1)}/>}
             {view==="flashcards"  && <Flashcards setView={setView} c={c}/>}
             {view==="progress"    && <Progress c={c} skills={skills} subjects={subjects}/>}
