@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import katex from "katex";
 
 /* ════════════════════════════════════════════════════════════
    Apti — Editorial / Academic study system
@@ -820,20 +821,87 @@ function useSessionClock() {
   return secs;
 }
 
+/* ─── MathText: renders $...$ / $$...$$ / ```lang ... ``` ────── */
+function MathText({ text, c, style = {} }) {
+  if (!text) return null;
+
+  const parts = [];
+  // Split on display math $$...$$, inline math $...$, and fenced code blocks
+  const re = /(\$\$[\s\S]+?\$\$|\$[^$\n]+?\$|```[\w]*\n[\s\S]*?```)/g;
+  let last = 0;
+  let m;
+  while ((m = re.exec(text)) !== null) {
+    if (m.index > last) parts.push({ type: "text", content: text.slice(last, m.index) });
+    const tok = m[0];
+    if (tok.startsWith("$$")) {
+      parts.push({ type: "display-math", content: tok.slice(2, -2).trim() });
+    } else if (tok.startsWith("$")) {
+      parts.push({ type: "inline-math", content: tok.slice(1, -1).trim() });
+    } else {
+      const nl = tok.indexOf("\n");
+      const lang = tok.slice(3, nl).trim();
+      const code = tok.slice(nl + 1, -3);
+      parts.push({ type: "code", lang, content: code });
+    }
+    last = m.index + tok.length;
+  }
+  if (last < text.length) parts.push({ type: "text", content: text.slice(last) });
+
+  return (
+    <span style={style}>
+      {parts.map((p, i) => {
+        if (p.type === "inline-math") {
+          let html = "";
+          try { html = katex.renderToString(p.content, { throwOnError: false }); } catch {}
+          return <span key={i} dangerouslySetInnerHTML={{ __html: html }} />;
+        }
+        if (p.type === "display-math") {
+          let html = "";
+          try { html = katex.renderToString(p.content, { throwOnError: false, displayMode: true }); } catch {}
+          return <div key={i} style={{ overflowX: "auto", margin: "12px 0" }} dangerouslySetInnerHTML={{ __html: html }} />;
+        }
+        if (p.type === "code") {
+          return (
+            <pre key={i} style={{
+              background: c.bgAlt, border: `1px solid ${c.line}`, borderRadius: 3,
+              padding: "14px 18px", margin: "12px 0", overflowX: "auto",
+              fontFamily: "'Spline Sans Mono', monospace", fontSize: 14, lineHeight: 1.6,
+              color: c.ink,
+            }}>
+              {p.lang && <div style={{ fontSize: 10, color: c.faint, marginBottom: 6, letterSpacing: "0.1em", textTransform: "uppercase" }}>{p.lang}</div>}
+              <code>{p.content}</code>
+            </pre>
+          );
+        }
+        return <span key={i}>{p.content}</span>;
+      })}
+    </span>
+  );
+}
+
 /* ─── Study Hall ──────────────────────────────────────────────── */
 function StudyHall({ setView, c, activeSkill, onComplete }) {
-  const [phase,     setPhase]     = useState("loading");
-  const [sessionId, setSessionId] = useState(null);
-  const [lesson,    setLesson]    = useState(null);
-  const [questions, setQuestions] = useState([]);
-  const [qIdx,      setQIdx]      = useState(0);
-  const [sel,       setSel]       = useState(null);
-  const [openText,  setOpenText]  = useState("");
-  const [answers,   setAnswers]   = useState([]);
-  const [result,    setResult]    = useState(null);
-  const [error,     setError]     = useState(null);
+  const [phase,        setPhase]        = useState("loading");
+  const [sessionId,    setSessionId]    = useState(null);
+  const [lesson,       setLesson]       = useState(null);
+  const [stageIdx,     setStageIdx]     = useState(0);
+  const [practiceStep, setPracticeStep] = useState("problem"); // problem | hints | solution
+  const [hintsShown,   setHintsShown]   = useState(0);
+  const [practiceOut,  setPracticeOut]  = useState("unaided"); // unaided | hint_used | solution_revealed
+  const [recallIdx,    setRecallIdx]    = useState(0);
+  const [recallShown,  setRecallShown]  = useState(false);
+  const [questions,    setQuestions]    = useState([]);
+  const [qIdx,         setQIdx]         = useState(0);
+  const [sel,          setSel]          = useState(null);
+  const [openText,     setOpenText]     = useState("");
+  const [answers,      setAnswers]      = useState([]);
+  const [result,       setResult]       = useState(null);
+  const [error,        setError]        = useState(null);
   const qStartRef = useRef({});
   const elapsed   = useSessionClock();
+
+  // Ordered stage keys matching the lesson schema
+  const STAGE_KEYS = ["hook", "intuition", "analogy", "build", "worked", "practice", "recall", "connections"];
 
   useEffect(() => {
     if (!activeSkill) { setView("dashboard"); return; }
@@ -891,94 +959,322 @@ function StudyHall({ setView, c, activeSkill, onComplete }) {
   if (phase === "submitting")   return <Loading c={c} message="Grading your answers…" />;
   if (phase === "error")        return <ErrorScreen c={c} message={error} onBack={() => setView("dashboard")} />;
 
-  /* ── Lesson ── */
-  if (phase === "lesson" && lesson) return (
-    <div className="fade">
-      <div className="header">
-        <button onClick={()=>setView("dashboard")} className="mono" style={{background:"none",border:"none",color:c.faint,cursor:"pointer",fontSize:11,letterSpacing:"0.1em",marginBottom:18,padding:0}}>
-          ← DASHBOARD
-        </button>
-        <div className="header-rule">
-          <div style={{display:"flex", justifyContent:"space-between", alignItems:"flex-start", gap:12}}>
-            <div>
-              <div className="kicker">Study Hall · {activeSkill?.label}</div>
-              <h1 className="display" style={{fontSize:42, color:c.ink, marginTop:10}}>{lesson.topic}</h1>
-            </div>
-            <div className="mono" style={{fontSize:12, color:c.faint, paddingTop:6, display:"flex", alignItems:"center", gap:6, whiteSpace:"nowrap"}}>
-              <span style={{width:6, height:6, borderRadius:"50%", background:c.green, display:"inline-block"}}/>
-              {fmt(elapsed)} elapsed
-            </div>
+  /* ── Lesson (8 stages) ── */
+  if (phase === "lesson" && lesson) {
+    const stages = lesson.stages || {};
+    const currentKey = STAGE_KEYS[stageIdx];
+    const isLast = stageIdx === STAGE_KEYS.length - 1;
+    const totalStages = STAGE_KEYS.length;
+
+    const STAGE_LABELS = {
+      hook:        { label: "Hook",        color: c.accent },
+      intuition:   { label: "Intuition",   color: c.accent },
+      analogy:     { label: "Analogy",     color: c.gold   },
+      build:       { label: "Build",       color: c.ink    },
+      worked:      { label: "Worked Example", color: c.blue },
+      practice:    { label: "Practice",    color: c.green  },
+      recall:      { label: "Recall",      color: c.gold   },
+      connections: { label: "Connections", color: c.faint  },
+    };
+
+    const meta = STAGE_LABELS[currentKey];
+
+    const advance = () => {
+      setStageIdx(i => i + 1);
+      setPracticeStep("problem");
+      setHintsShown(0);
+      setRecallIdx(0);
+      setRecallShown(false);
+    };
+
+    const renderStage = () => {
+      if (currentKey === "hook") {
+        return (
+          <p className="body" style={{fontSize:22, lineHeight:1.65, color:c.ink, fontStyle:"italic"}}>
+            <MathText text={stages.hook} c={c} />
+          </p>
+        );
+      }
+
+      if (currentKey === "intuition") {
+        return (
+          <p className="body dropcap" style={{fontSize:21, lineHeight:1.65, color:c.ink}}>
+            <MathText text={stages.intuition} c={c} />
+          </p>
+        );
+      }
+
+      if (currentKey === "analogy") {
+        return (
+          <p className="body" style={{fontSize:18, lineHeight:1.7, color:c.sub}}>
+            <MathText text={stages.analogy} c={c} />
+          </p>
+        );
+      }
+
+      if (currentKey === "build") {
+        return (
+          <div>
+            {(stages.build || []).map((step, i) => (
+              <div key={i} style={{marginBottom:24}}>
+                <div className="mono" style={{fontSize:11, color:c.faint, marginBottom:6, letterSpacing:"0.1em"}}>STEP {i+1}</div>
+                <p className="body" style={{fontSize:18, lineHeight:1.65, color:c.ink, marginBottom:8}}>
+                  <MathText text={step.step} c={c} />
+                </p>
+                <p className="body" style={{fontSize:15, lineHeight:1.6, color:c.sub, paddingLeft:16, borderLeft:`2px solid ${c.line}`}}>
+                  <MathText text={step.why} c={c} />
+                </p>
+                {i < (stages.build||[]).length - 1 && <div style={{height:1, background:c.line, margin:"20px 0"}}/>}
+              </div>
+            ))}
           </div>
-        </div>
-      </div>
+        );
+      }
 
-      <div className="content">
-        <div className="session-col">
-          <article>
-            <div style={{marginBottom:32}}>
-              <div className="kicker" style={{color:c.accent, marginBottom:12}}>The Core Intuition</div>
-              <p className="body dropcap" style={{fontSize:21, lineHeight:1.65, color:c.ink}}>{lesson.intuition}</p>
+      if (currentKey === "worked") {
+        const w = stages.worked || {};
+        return (
+          <div>
+            <div className="paper" style={{padding:"18px 22px", marginBottom:20, borderLeft:`4px solid ${c.blue}`}}>
+              <div className="kicker" style={{color:c.blue, marginBottom:8}}>Problem</div>
+              <p className="body" style={{fontSize:18, lineHeight:1.6, color:c.ink}}>
+                <MathText text={w.problem} c={c} />
+              </p>
+            </div>
+            <div className="kicker" style={{marginBottom:12}}>Expert Reasoning</div>
+            {(w.reasoning || []).map((line, i) => (
+              <div key={i} style={{display:"flex", gap:14, marginBottom:14}}>
+                <span className="mono" style={{
+                  fontSize:11, color:c.blue, width:22, height:22, flexShrink:0,
+                  border:`1px solid ${c.blue}`, borderRadius:"50%",
+                  display:"flex", alignItems:"center", justifyContent:"center",
+                }}>{i+1}</span>
+                <p className="body" style={{fontSize:16, lineHeight:1.65, color:c.ink, margin:0}}>
+                  <MathText text={line} c={c} />
+                </p>
+              </div>
+            ))}
+            {w.answer && (
+              <div style={{marginTop:20, padding:"14px 18px", background:c.bgAlt, borderRadius:3, border:`1px solid ${c.line}`}}>
+                <div className="kicker" style={{marginBottom:6}}>Answer</div>
+                <p className="body" style={{fontSize:17, color:c.ink, margin:0}}>
+                  <MathText text={w.answer} c={c} />
+                </p>
+              </div>
+            )}
+          </div>
+        );
+      }
+
+      if (currentKey === "practice") {
+        const pr = stages.practice || {};
+        const hints = pr.hints || [];
+        return (
+          <div>
+            <div className="paper" style={{padding:"18px 22px", marginBottom:20, borderLeft:`4px solid ${c.green}`}}>
+              <div className="kicker" style={{color:c.green, marginBottom:8}}>Your Turn</div>
+              <p className="body" style={{fontSize:18, lineHeight:1.6, color:c.ink}}>
+                <MathText text={pr.problem} c={c} />
+              </p>
             </div>
 
-            <div style={{height:1, background:c.line, margin:"32px 0"}}/>
-
-            <div style={{marginBottom:32}}>
-              <div className="kicker" style={{color:c.gold, marginBottom:12}}>An Analogy</div>
-              <p className="body" style={{fontSize:18, lineHeight:1.7, color:c.sub}}>{lesson.analogy}</p>
-            </div>
-
-            <div style={{height:1, background:c.line, margin:"32px 0"}}/>
-
-            <div>
-              <div className="kicker" style={{marginBottom:12}}>The Formal Statement</div>
-              <p className="body" style={{fontSize:18, lineHeight:1.7, color:c.sub}}>{lesson.formal}</p>
-            </div>
-
-            {lesson.key_terms?.length > 0 && (
-              <>
-                <div style={{height:1, background:c.line, margin:"32px 0"}}/>
-                <div>
-                  <div className="kicker" style={{marginBottom:14}}>Key Terms</div>
-                  {lesson.key_terms.map(kt=>(
-                    <div key={kt.term} style={{marginBottom:10}}>
-                      <span className="serif-h" style={{fontSize:16, color:c.ink}}>{kt.term}</span>
-                      <span className="body" style={{fontSize:15, color:c.sub}}> — {kt.meaning}</span>
-                    </div>
-                  ))}
-                </div>
-              </>
+            {practiceStep === "problem" && (
+              <div style={{display:"flex", gap:10, flexWrap:"wrap"}}>
+                {hints.length > 0 && (
+                  <button className="btn btn-ghost" onClick={()=>{
+                    setHintsShown(1); setPracticeStep("hints");
+                    if (practiceOut === "unaided") setPracticeOut("hint_used");
+                  }}>Show Hint 1</button>
+                )}
+                <button className="btn btn-ghost" onClick={()=>{
+                  setPracticeStep("solution"); setPracticeOut("solution_revealed");
+                }}>Show Solution</button>
+              </div>
             )}
 
-            {lesson.watch_out && (
-              <>
-                <div style={{height:1, background:c.line, margin:"32px 0"}}/>
-                <div className="paper" style={{padding:"16px 20px", borderLeft:`4px solid ${c.gold}`}}>
-                  <div className="kicker" style={{color:c.gold, marginBottom:8}}>Watch Out</div>
-                  <p className="body" style={{fontSize:15, color:c.sub, lineHeight:1.6}}>{lesson.watch_out}</p>
+            {practiceStep === "hints" && (
+              <div>
+                {hints.slice(0, hintsShown).map((h, i) => (
+                  <div key={i} style={{
+                    padding:"12px 16px", marginBottom:10,
+                    border:`1px solid ${c.line}`, borderRadius:3,
+                    borderLeft:`3px solid ${c.gold}`,
+                  }}>
+                    <div className="mono" style={{fontSize:9, color:c.gold, marginBottom:4}}>HINT {i+1}</div>
+                    <p className="body" style={{fontSize:15, color:c.sub, margin:0, lineHeight:1.6}}>
+                      <MathText text={h} c={c} />
+                    </p>
+                  </div>
+                ))}
+                <div style={{display:"flex", gap:10, flexWrap:"wrap", marginTop:10}}>
+                  {hintsShown < hints.length && (
+                    <button className="btn btn-ghost" onClick={()=>setHintsShown(n=>n+1)}>
+                      Show Hint {hintsShown+1}
+                    </button>
+                  )}
+                  <button className="btn btn-ghost" onClick={()=>{
+                    setPracticeStep("solution"); setPracticeOut("solution_revealed");
+                  }}>Show Solution</button>
                 </div>
-              </>
+              </div>
             )}
-          </article>
 
-          <div style={{position:"sticky", top:24}}>
-            <FocusTimer c={c}/>
-            <div className="paper" style={{padding:24, boxShadow:c.shadow}}>
-              <div className="kicker" style={{marginBottom:16}}>Lecture Notes</div>
-              {[["Topic",lesson.topic],["Chapter",activeSkill?.label||"—"],["Difficulty","Foundational"]].map(([k,v])=>(
-                <div key={k} style={{display:"flex", justifyContent:"space-between", padding:"9px 0", borderBottom:`1px solid ${c.line}`}}>
-                  <span className="body" style={{fontSize:15, color:c.faint}}>{k}</span>
-                  <span className="serif-h" style={{fontSize:15, color:c.ink}}>{v}</span>
+            {practiceStep === "solution" && (
+              <div style={{padding:"18px 22px", background:c.bgAlt, borderRadius:3, border:`1px solid ${c.line}`}}>
+                <div className="kicker" style={{marginBottom:8}}>Solution</div>
+                <p className="body" style={{fontSize:16, lineHeight:1.65, color:c.ink}}>
+                  <MathText text={pr.solution} c={c} />
+                </p>
+              </div>
+            )}
+          </div>
+        );
+      }
+
+      if (currentKey === "recall") {
+        const items = stages.recall || [];
+        const item = items[recallIdx];
+        if (!item) return null;
+        return (
+          <div>
+            <div className="kicker" style={{marginBottom:8}}>
+              Quick Check {recallIdx+1} of {items.length}
+            </div>
+            <p className="body" style={{fontSize:20, lineHeight:1.5, color:c.ink, marginBottom:20}}>
+              <MathText text={item.q} c={c} />
+            </p>
+            {!recallShown ? (
+              <button className="btn btn-ghost" onClick={()=>setRecallShown(true)}>Reveal Answer</button>
+            ) : (
+              <div>
+                <div style={{padding:"14px 18px", background:c.bgAlt, borderRadius:3, border:`1px solid ${c.line}`, marginBottom:16}}>
+                  <p className="body" style={{fontSize:16, color:c.ink, margin:0}}>
+                    <MathText text={item.a} c={c} />
+                  </p>
                 </div>
+                {recallIdx + 1 < items.length ? (
+                  <button className="btn btn-ghost" onClick={()=>{ setRecallIdx(i=>i+1); setRecallShown(false); }}>
+                    Next Check →
+                  </button>
+                ) : null}
+              </div>
+            )}
+          </div>
+        );
+      }
+
+      if (currentKey === "connections") {
+        return (
+          <p className="body" style={{fontSize:18, lineHeight:1.7, color:c.sub}}>
+            <MathText text={stages.connections || lesson.connections} c={c} />
+          </p>
+        );
+      }
+
+      return null;
+    };
+
+    // For recall: "Continue" only appears after all recall items are revealed
+    const recallItems = stages.recall || [];
+    const recallDone = currentKey !== "recall" || (recallShown && recallIdx === recallItems.length - 1);
+
+    return (
+      <div className="fade">
+        <div className="header">
+          <button onClick={()=>setView("dashboard")} className="mono" style={{background:"none",border:"none",color:c.faint,cursor:"pointer",fontSize:11,letterSpacing:"0.1em",marginBottom:18,padding:0}}>
+            ← DASHBOARD
+          </button>
+          <div className="header-rule">
+            <div style={{display:"flex", justifyContent:"space-between", alignItems:"flex-start", gap:12}}>
+              <div>
+                <div className="kicker">Study Hall · {activeSkill?.label}</div>
+                <h1 className="display" style={{fontSize:42, color:c.ink, marginTop:10}}>{lesson.topic}</h1>
+              </div>
+              <div className="mono" style={{fontSize:12, color:c.faint, paddingTop:6, display:"flex", alignItems:"center", gap:6, whiteSpace:"nowrap"}}>
+                <span style={{width:6, height:6, borderRadius:"50%", background:c.green, display:"inline-block"}}/>
+                {fmt(elapsed)} elapsed
+              </div>
+            </div>
+
+            {/* Stage progress bar */}
+            <div style={{display:"flex", gap:4, marginTop:16}}>
+              {STAGE_KEYS.map((k, i) => (
+                <div key={k} style={{
+                  flex:1, height:3,
+                  background: i < stageIdx ? c.accent : i === stageIdx ? meta.color : c.line,
+                  borderRadius:99, transition:"background 0.3s",
+                }}/>
               ))}
-              <button className="btn btn-accent" style={{width:"100%", marginTop:20}} onClick={fetchQuiz}>
-                Sit the Quiz →
-              </button>
+            </div>
+          </div>
+        </div>
+
+        <div className="content">
+          <div className="session-col">
+            <article className="fade" key={currentKey}>
+              <div className="kicker" style={{color:meta.color, marginBottom:14}}>
+                {`${stageIdx + 1} / ${totalStages} — ${meta.label}`}
+              </div>
+
+              {renderStage()}
+
+              {lesson.key_terms?.length > 0 && currentKey === "connections" && (
+                <>
+                  <div style={{height:1, background:c.line, margin:"32px 0"}}/>
+                  <div>
+                    <div className="kicker" style={{marginBottom:14}}>Key Terms</div>
+                    {lesson.key_terms.map(kt=>(
+                      <div key={kt.term} style={{marginBottom:10}}>
+                        <span className="serif-h" style={{fontSize:16, color:c.ink}}>{kt.term}</span>
+                        <span className="body" style={{fontSize:15, color:c.sub}}> — {kt.meaning}</span>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
+
+              {lesson.watch_out && currentKey === "connections" && (
+                <>
+                  <div style={{height:1, background:c.line, margin:"32px 0"}}/>
+                  <div className="paper" style={{padding:"16px 20px", borderLeft:`4px solid ${c.gold}`}}>
+                    <div className="kicker" style={{color:c.gold, marginBottom:8}}>Watch Out</div>
+                    <p className="body" style={{fontSize:15, color:c.sub, lineHeight:1.6}}>
+                      <MathText text={lesson.watch_out} c={c} />
+                    </p>
+                  </div>
+                </>
+              )}
+
+              <div style={{marginTop:32}}>
+                {isLast ? (
+                  <button className="btn btn-accent" onClick={fetchQuiz} disabled={!recallDone}>
+                    Begin Quiz →
+                  </button>
+                ) : (
+                  <button className="btn btn-accent" onClick={advance} disabled={!recallDone}>
+                    Continue →
+                  </button>
+                )}
+              </div>
+            </article>
+
+            <div style={{position:"sticky", top:24}}>
+              <FocusTimer c={c}/>
+              <div className="paper" style={{padding:24, boxShadow:c.shadow}}>
+                <div className="kicker" style={{marginBottom:16}}>Lecture Notes</div>
+                {[["Topic",lesson.topic],["Chapter",activeSkill?.label||"—"],["Stage",`${stageIdx+1} / ${totalStages}`]].map(([k,v])=>(
+                  <div key={k} style={{display:"flex", justifyContent:"space-between", padding:"9px 0", borderBottom:`1px solid ${c.line}`}}>
+                    <span className="body" style={{fontSize:15, color:c.faint}}>{k}</span>
+                    <span className="serif-h" style={{fontSize:15, color:c.ink}}>{v}</span>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
         </div>
       </div>
-    </div>
-  );
+    );
+  }
 
   /* ── Quiz ── */
   if (phase === "quiz" && questions.length > 0) {
