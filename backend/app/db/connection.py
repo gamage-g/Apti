@@ -34,8 +34,16 @@ _pool: asyncpg.Pool | None = None
 
 async def init_pool() -> None:
     global _pool
+    import os
     s = get_settings()
-    _pool = await asyncpg.create_pool(s.database_url, min_size=2, max_size=10)
+    # Serverless environments (Vercel) spin up many instances; keep pools small
+    # to avoid exhausting the database connection limit.
+    serverless = bool(os.getenv("VERCEL"))
+    _pool = await asyncpg.create_pool(
+        s.database_url,
+        min_size=1 if serverless else 2,
+        max_size=3 if serverless else 10,
+    )
 
 
 async def close_pool() -> None:
