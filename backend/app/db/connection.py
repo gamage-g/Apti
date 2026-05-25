@@ -43,6 +43,9 @@ async def init_pool() -> None:
         s.database_url,
         min_size=1 if serverless else 2,
         max_size=3 if serverless else 10,
+        # Supabase uses PgBouncer in transaction mode which doesn't support
+        # named prepared statements — disable the cache to stay compatible.
+        statement_cache_size=0,
     )
 
 
