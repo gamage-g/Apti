@@ -2266,6 +2266,38 @@ function PythonLab({ c, setView, skills, setActiveSkill }) {
               )}
             </div>
 
+            {/* Apti mastery for this module's skill */}
+            {aptiSkill && (
+              <div className="paper" style={{ padding:"22px 24px", marginBottom:20, boxShadow:c.shadow }}>
+                <div className="kicker" style={{ marginBottom:14 }}>Apti Mastery</div>
+                <div style={{ display:"flex", alignItems:"center", gap:16, marginBottom: (aptiSkill.subs||[]).length ? 16 : 0 }}>
+                  <div style={{ position:"relative", flexShrink:0 }}>
+                    <Ring pct={aptiSkill.mastery} color={c.green} size={72} stroke={3}/>
+                    <div style={{ position:"absolute", inset:0, display:"flex", alignItems:"center", justifyContent:"center" }}>
+                      <span className="display" style={{ fontSize:20, color:c.green }}>{aptiSkill.mastery}</span>
+                    </div>
+                  </div>
+                  <div>
+                    <div className="serif-h" style={{ fontSize:15, color:c.ink }}>{aptiSkill.label}</div>
+                    <div className="mono" style={{ fontSize:10, color:c.faint, marginTop:4 }}>
+                      {aptiSkill.mastery >= 70 ? "MASTERED" : aptiSkill.mastery >= 40 ? "PROGRESSING" : "FOUNDATIONAL"}
+                    </div>
+                  </div>
+                </div>
+                {(aptiSkill.subs || []).map((s, i) => (
+                  <div key={s} style={{ display:"flex", alignItems:"center", gap:8, marginBottom:6 }}>
+                    <span className="body" style={{ fontSize:12, color:c.sub, flex:1 }}>{s}</span>
+                    <div style={{ width:56, height:2, background:c.line, borderRadius:99, overflow:"hidden" }}>
+                      <div className="bar" style={{ "--w":`${(aptiSkill.subMastery||[])[i]||0}%`, background:c.green }}/>
+                    </div>
+                    <span className="mono" style={{ fontSize:10, color:c.faint, width:28, textAlign:"right" }}>
+                      {(aptiSkill.subMastery||[])[i]||0}%
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+
             {/* Roadmap */}
             <div className="paper" style={{ padding:"22px 24px", boxShadow:c.shadow }}>
               <div className="kicker" style={{ marginBottom:14 }}>12-Week Roadmap</div>
