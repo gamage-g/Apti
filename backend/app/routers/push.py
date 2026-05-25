@@ -6,8 +6,9 @@ import asyncio
 import base64
 import json
 from concurrent.futures import ThreadPoolExecutor
+from functools import lru_cache
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Header, HTTPException
 from pydantic import BaseModel
 from pywebpush import webpush, WebPushException
 
@@ -18,10 +19,10 @@ router = APIRouter(prefix="/api/push", tags=["push"])
 _executor = ThreadPoolExecutor(max_workers=4)
 
 
+@lru_cache(maxsize=1)
 def _private_pem() -> str:
-    """Decode the base64-encoded PEM private key from settings."""
-    raw = get_settings().vapid_private_key
-    return base64.b64decode(raw).decode()
+    """Decode the base64-encoded PEM private key once and cache it."""
+    return base64.b64decode(get_settings().vapid_private_key).decode()
 
 
 def _send_one(endpoint: str, p256dh: str, auth: str, payload: dict) -> None:
@@ -65,8 +66,13 @@ async def subscribe(body: SubscribeRequest):
 # ─── POST /api/push/send-reminder ────────────────────────────────────────────
 
 @router.post("/send-reminder")
-async def send_reminder():
-    """Send a study reminder to all subscribers. Call this from a daily cron."""
+async def send_reminder(x_push_secret: str = Header(...)):
+    """Send a study reminder to all subscribers. Call this from a daily cron.
+    Requires the X-Push-Secret header to match the PUSH_SECRET environment variable.
+    """
+    secret = get_settings().push_secret
+    if not secret or x_push_secret != secret:
+        raise HTTPException(403, "Invalid or missing push secret")
     pool = get_pool()
     rows = await pool.fetch("SELECT endpoint, p256dh, auth FROM push_subscriptions")
     if not rows:

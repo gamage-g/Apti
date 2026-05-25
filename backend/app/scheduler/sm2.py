@@ -45,7 +45,7 @@ def next_interval(state: CardState, grade: int) -> CardState:
         new_interval = 1
         new_ease = max(EASE_FLOOR, state.ease - 0.2)
     elif grade == 1:
-        new_interval = max(1, round(state.interval * 1.2))
+        new_interval = max(2, round(state.interval * 1.2))  # floor 2: partial ≠ forgot
         new_ease = max(EASE_FLOOR, state.ease - 0.05)
     else:  # grade == 2
         new_interval = round(state.interval * state.ease)

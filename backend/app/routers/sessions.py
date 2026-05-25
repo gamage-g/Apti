@@ -11,6 +11,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, ValidationError
 
 from app.db.connection import get_pool
+from app.db.queries import LOCKED_EXPR
 from app.apti import client as apti
 from app.apti.schemas import StagedLesson, Quiz, GradeResponse, CartographerResponse, GatekeeperResponse
 from app.scheduler.sm2 import mastery_delta, GradedOpen, GradedMCQ
@@ -34,6 +35,13 @@ class SubmitRequest(BaseModel):
     session_id: str
     answers: list[AnswerSubmission]
     practice_outcome: Literal["unaided", "hint_used", "solution_revealed"] = "unaided"
+
+
+class LabProgressRequest(BaseModel):
+    skill_id: str
+    type: Literal["exercise", "quiz"]
+    practice_outcome: Literal["unaided", "hint_used", "solution_revealed"] = "unaided"
+    mcq_results: list[bool] = []
 
 
 # ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -149,20 +157,9 @@ async def start_session(body: StartRequest):
     pool = get_pool()
 
     # Verify skill exists and is unlocked (locked computed from prerequisites + mastery)
-    skill = await pool.fetchrow("""
+    skill = await pool.fetchrow(f"""
         SELECT s.id, s.label, s.subject_id,
-        (
-            EXISTS (
-                SELECT 1 FROM prerequisites p
-                LEFT JOIN mastery m ON m.skill_id = p.required_skill_id AND m.sub_skill_id IS NULL
-                WHERE p.gated_skill_id = s.id AND COALESCE(m.score, 0) < p.mastery_threshold
-            )
-            OR EXISTS (
-                SELECT 1 FROM prerequisites p
-                LEFT JOIN mastery m ON m.skill_id = p.required_skill_id AND m.sub_skill_id IS NULL
-                WHERE p.gated_subject_id = s.subject_id AND COALESCE(m.score, 0) < p.mastery_threshold
-            )
-        ) AS locked
+        {LOCKED_EXPR} AS locked
         FROM skills s WHERE s.id = $1
     """, body.skill_id)
     if not skill:
@@ -173,20 +170,9 @@ async def start_session(body: StartRequest):
     subject_id = skill["subject_id"] or "mathematics"
 
     # Gather context for the Lecturer
-    unlocked = await pool.fetch("""
+    unlocked = await pool.fetch(f"""
         SELECT s.id FROM skills s
-        WHERE NOT (
-            EXISTS (
-                SELECT 1 FROM prerequisites p
-                LEFT JOIN mastery m ON m.skill_id = p.required_skill_id AND m.sub_skill_id IS NULL
-                WHERE p.gated_skill_id = s.id AND COALESCE(m.score, 0) < p.mastery_threshold
-            )
-            OR EXISTS (
-                SELECT 1 FROM prerequisites p
-                LEFT JOIN mastery m ON m.skill_id = p.required_skill_id AND m.sub_skill_id IS NULL
-                WHERE p.gated_subject_id = s.subject_id AND COALESCE(m.score, 0) < p.mastery_threshold
-            )
-        )
+        WHERE NOT {LOCKED_EXPR}
     """)
     unlocked_ids = [r["id"] for r in unlocked]
     recent_struggles = await _get_recent_struggles(pool, body.skill_id)
@@ -298,13 +284,15 @@ async def submit_session(body: SubmitRequest):
     pool = get_pool()
 
     session = await pool.fetchrow(
-        "SELECT sess.skill_id, sk.subject_id"
+        "SELECT sess.skill_id, sk.subject_id, sess.completed_at"
         " FROM sessions sess JOIN skills sk ON sk.id = sess.skill_id"
         " WHERE sess.id = $1",
         body.session_id,
     )
     if not session:
         raise HTTPException(404, "Session not found")
+    if session["completed_at"] is not None:
+        raise HTTPException(409, "Session already submitted — mastery has already been recorded")
 
     skill_id   = session["skill_id"]
     subject_id = session["subject_id"] or "mathematics"
@@ -354,7 +342,10 @@ async def submit_session(body: SubmitRequest):
         except ValidationError as e:
             raise HTTPException(502, f"Grade schema mismatch: {e}")
         open_results = graded.get("results", [])
+        # Build lookup once instead of O(n²) next() scans; also catches Grader ID mismatches.
+        answer_by_id = {a.question_id: a for a in body.answers}
         for r in open_results:
+            matched = answer_by_id.get(r["question_id"])
             await pool.execute(
                 """
                 INSERT INTO session_answers
@@ -364,8 +355,8 @@ async def submit_session(body: SubmitRequest):
                 """,
                 body.session_id,
                 r["question_id"],
-                next((a.value for a in body.answers if a.question_id == r["question_id"]), ""),
-                next((a.response_time_ms for a in body.answers if a.question_id == r["question_id"]), None),
+                matched.value if matched else "",
+                matched.response_time_ms if matched else None,
                 r["intuition"], r["method"], r["accuracy"], r["verdict"], r["feedback"],
             )
 
@@ -444,3 +435,36 @@ async def submit_session(body: SubmitRequest):
         "new_mastery": new_mastery,
         "unlock_decision": unlock_decision,
     }
+
+
+# ─── POST /api/session/lab-progress ──────────────────────────────────────────
+
+_EXERCISE_DELTAS = {"unaided": 3, "hint_used": 2, "solution_revealed": 1}
+
+@router.post("/lab-progress")
+async def lab_progress(body: LabProgressRequest):
+    """
+    Lightweight mastery update from the Python Practice Lab.
+    No AI calls — all deterministic.
+
+    type=exercise: fixed delta scaled by whether the learner peeked at the solution.
+    type=quiz:     delta computed from MCQ results using the same mastery_delta formula.
+    """
+    pool = get_pool()
+
+    # Verify skill exists
+    exists = await pool.fetchval("SELECT 1 FROM skills WHERE id = $1", body.skill_id)
+    if not exists:
+        raise HTTPException(404, f"Skill '{body.skill_id}' not found")
+
+    if body.type == "quiz":
+        graded: list[GradedMCQ] = [
+            {"question_id": f"lq{i}", "correct": ok}
+            for i, ok in enumerate(body.mcq_results)
+        ]
+        delta = mastery_delta([], graded, [], [], body.practice_outcome)
+    else:
+        delta = _EXERCISE_DELTAS.get(body.practice_outcome, 1)
+
+    new_mastery = await _update_mastery(pool, body.skill_id, delta)
+    return {"mastery_delta": delta, "new_mastery": new_mastery}

@@ -19,6 +19,8 @@ class Settings(BaseSettings):
     vapid_private_key: str = ""
     vapid_public_key: str = ""
     vapid_mailto: str = "mailto:admin@apti.app"
+    # Secret header required by POST /api/push/send-reminder (set in cron config)
+    push_secret: str = ""
 
     class Config:
         env_file = ".env"

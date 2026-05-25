@@ -5,28 +5,9 @@ Locked state is computed dynamically from the prerequisites table + learner mast
 
 from fastapi import APIRouter, HTTPException
 from app.db.connection import get_pool
+from app.db.queries import LOCKED_EXPR
 
 router = APIRouter(prefix="/api/subjects", tags=["subjects"])
-
-# Reusable SQL fragment: true if every prerequisite for a skill is unmet.
-_LOCKED_EXPR = """
-    (
-        EXISTS (
-            SELECT 1 FROM prerequisites p
-            LEFT JOIN mastery m
-                   ON m.skill_id = p.required_skill_id AND m.sub_skill_id IS NULL
-            WHERE p.gated_skill_id = s.id
-              AND COALESCE(m.score, 0) < p.mastery_threshold
-        )
-        OR EXISTS (
-            SELECT 1 FROM prerequisites p
-            LEFT JOIN mastery m
-                   ON m.skill_id = p.required_skill_id AND m.sub_skill_id IS NULL
-            WHERE p.gated_subject_id = s.subject_id
-              AND COALESCE(m.score, 0) < p.mastery_threshold
-        )
-    )
-"""
 
 
 @router.get("")
@@ -42,7 +23,7 @@ async def list_subjects():
             s.id, s.num, s.label, s.accent_key, s.subject_id, s.sort_order,
             COALESCE(MAX(m.score), 0)                                       AS mastery,
             COUNT(DISTINCT c.id) FILTER (WHERE c.due_date <= CURRENT_DATE)  AS due,
-            {_LOCKED_EXPR}                                                  AS locked
+            {LOCKED_EXPR}                                                  AS locked
         FROM skills s
         LEFT JOIN mastery m ON m.skill_id = s.id AND m.sub_skill_id IS NULL
         LEFT JOIN cards   c ON c.skill_id = s.id
@@ -91,7 +72,7 @@ async def subject_skills(subject_id: str):
             s.id, s.num, s.label, s.accent_key, s.sort_order,
             COALESCE(MAX(m.score), 0)                                       AS mastery,
             COUNT(DISTINCT c.id) FILTER (WHERE c.due_date <= CURRENT_DATE)  AS due,
-            {_LOCKED_EXPR}                                                  AS locked
+            {LOCKED_EXPR}                                                  AS locked
         FROM skills s
         LEFT JOIN mastery m ON m.skill_id = s.id AND m.sub_skill_id IS NULL
         LEFT JOIN cards   c ON c.skill_id = s.id

@@ -962,8 +962,9 @@ function StudyHall({ setView, c, activeSkill, onComplete }) {
   const [sel,          setSel]          = useState(null);
   const [openText,     setOpenText]     = useState("");
   const [answers,      setAnswers]      = useState([]);
-  const [result,       setResult]       = useState(null);
-  const [error,        setError]        = useState(null);
+  const [result,        setResult]        = useState(null);
+  const [error,         setError]         = useState(null);
+  const [quizSubmitted, setQuizSubmitted] = useState(false);
   const qStartRef = useRef({});
   const elapsed   = useSessionClock();
 
@@ -1022,7 +1023,7 @@ function StudyHall({ setView, c, activeSkill, onComplete }) {
           practice_outcome: practiceOut,
         }),
       });
-      setResult(d); setPhase("result");
+      setResult(d); setPhase("result"); setQuizSubmitted(true);
     } catch (e) { setError(e.message); setPhase("error"); }
   };
 
@@ -1357,9 +1358,15 @@ function StudyHall({ setView, c, activeSkill, onComplete }) {
 
               <div style={{marginTop:32}}>
                 {isLast ? (
+                  quizSubmitted ? (
+                    <button className="btn btn-accent" onClick={() => setPhase("result")}>
+                      View Results →
+                    </button>
+                  ) : (
                   <button className="btn btn-accent" onClick={fetchQuiz} disabled={!recallDone}>
                     Begin Quiz →
                   </button>
+                  )
                 ) : (
                   <button className="btn btn-accent" onClick={advance} disabled={!recallDone}>
                     Continue →
@@ -1787,7 +1794,7 @@ function Progress({ c, skills }) {
 }
 
 /* ─── Python Practice Lab ─────────────────────────────────────── */
-function PythonLab({ c, setView, skills, setActiveSkill }) {
+function PythonLab({ c, setView, skills, setActiveSkill, refreshSkills }) {
   const LS_KEY = "apti-python-lab-done-v1";
 
   const [phaseIdx,  setPhaseIdx]  = useState(0);
@@ -1832,7 +1839,12 @@ function PythonLab({ c, setView, skills, setActiveSkill }) {
 
   // Quiz helpers
   const startQuiz = () => {
-    const shuffled = [...PYTHON_QUIZ].sort(() => Math.random() - 0.5).slice(0, 10);
+    const arr = [...PYTHON_QUIZ];
+    for (let i = arr.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [arr[i], arr[j]] = [arr[j], arr[i]];
+    }
+    const shuffled = arr.slice(0, 10);
     setQuizSt({ active: true, idx: 0, score: 0, answers: [], qs: shuffled });
     setTab("quiz");
   };
@@ -1843,9 +1855,23 @@ function PythonLab({ c, setView, skills, setActiveSkill }) {
     const score = quizSt.score + (ok ? 1 : 0);
     if (quizSt.idx + 1 >= quizSt.qs.length) {
       setQuizSt({ active: false, idx: quizSt.idx + 1, score, answers, qs: quizSt.qs });
+      postLabProgress(
+        mod.aptiSkillId || "prog-python-basics",
+        "quiz",
+        "unaided",
+        answers.map(a => a.ok),
+      );
     } else {
       setQuizSt({ ...quizSt, idx: quizSt.idx + 1, score, answers });
     }
+  };
+
+  const postLabProgress = (skillId, type, outcome, mcqResults = []) => {
+    if (!skillId) return;
+    apiFetch("/api/session/lab-progress", {
+      method: "POST",
+      body: JSON.stringify({ skill_id: skillId, type, practice_outcome: outcome, mcq_results: mcqResults }),
+    }).then(() => refreshSkills && refreshSkills()).catch(() => {});
   };
 
   // Tip of the day
@@ -2058,7 +2084,12 @@ function PythonLab({ c, setView, skills, setActiveSkill }) {
                         style={{ padding:"14px 20px", cursor:"pointer", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
                         <div style={{ display:"flex", alignItems:"center", gap:14 }}>
                           <input type="checkbox" checked={!!exDone[eid]}
-                            onChange={e => { e.stopPropagation(); setExDone(d => ({...d, [eid]: !d[eid]})); }}
+                            onChange={e => {
+                              e.stopPropagation();
+                              const nowDone = !exDone[eid];
+                              if (nowDone) postLabProgress(mod.aptiSkillId, "exercise", "unaided");
+                              setExDone(d => ({...d, [eid]: nowDone}));
+                            }}
                             style={{ accentColor: accent, width:16, height:16 }}
                             onClick={e => e.stopPropagation()}
                           />
@@ -2089,8 +2120,16 @@ function PythonLab({ c, setView, skills, setActiveSkill }) {
                               }}>
                               {solShown[ei] ? "Hide Solution" : "Reveal Solution"}
                             </button>
-                            <button onClick={() => setExDone(d => ({...d, [eid]: true}))}
-                              style={{ padding:"7px 16px", borderRadius:3, cursor:"pointer", border:`1px solid ${c.green}`, background:"none", color:c.green, fontFamily:"'Spline Sans Mono',monospace", fontSize:11 }}>
+                            <button onClick={() => {
+                              if (!exDone[eid]) {
+                                postLabProgress(
+                                  mod.aptiSkillId,
+                                  "exercise",
+                                  solShown[ei] ? "solution_revealed" : "unaided",
+                                );
+                              }
+                              setExDone(d => ({...d, [eid]: true}));
+                            }} style={{ padding:"7px 16px", borderRadius:3, cursor:"pointer", border:`1px solid ${c.green}`, background:"none", color:c.green, fontFamily:"'Spline Sans Mono',monospace", fontSize:11 }}>
                               Mark Complete ✓
                             </button>
                           </div>
@@ -2382,7 +2421,7 @@ export default function App() {
             {view==="session"     && <StudyHall setView={setView} c={c} activeSkill={activeSkill} onComplete={()=>setRefreshKey(k=>k+1)}/>}
             {view==="flashcards"  && <Flashcards setView={setView} c={c}/>}
             {view==="progress"    && <Progress c={c} skills={skills} subjects={subjects}/>}
-            {view==="python-lab"  && <PythonLab c={c} setView={setView} skills={skills} setActiveSkill={setActiveSkill}/>}
+            {view==="python-lab"  && <PythonLab c={c} setView={setView} skills={skills} setActiveSkill={setActiveSkill} refreshSkills={() => setRefreshKey(k=>k+1)}/>}
           </main>
           <BottomNav view={view} setView={setView} c={c}/>
         </div>
