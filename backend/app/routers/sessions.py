@@ -108,6 +108,29 @@ async def _update_mastery(pool, skill_id: str, delta: int) -> int:
     return row["score"]
 
 
+async def _update_sub_mastery(pool, sub_skill_id: int, skill_id: str, delta: int) -> None:
+    row = await pool.fetchrow(
+        """
+        UPDATE mastery
+           SET score      = GREATEST(0, LEAST(100, score + $1)),
+               updated_at = NOW()
+         WHERE sub_skill_id = $2
+        RETURNING score
+        """,
+        delta, sub_skill_id,
+    )
+    if row is None:
+        await pool.execute(
+            """
+            INSERT INTO mastery (skill_id, sub_skill_id, score)
+            VALUES ($1, $2, GREATEST(0, LEAST(100, $3)))
+            ON CONFLICT (skill_id, sub_skill_id) DO UPDATE
+               SET score = GREATEST(0, LEAST(100, mastery.score + $3)), updated_at = NOW()
+            """,
+            skill_id, sub_skill_id, delta,
+        )
+
+
 def _learner_level(mastery: int) -> str:
     if mastery >= 70:
         return "advanced"
@@ -284,7 +307,7 @@ async def submit_session(body: SubmitRequest):
     pool = get_pool()
 
     session = await pool.fetchrow(
-        "SELECT sess.skill_id, sk.subject_id, sess.completed_at"
+        "SELECT sess.skill_id, sess.sub_skill_id, sk.subject_id, sess.completed_at"
         " FROM sessions sess JOIN skills sk ON sk.id = sess.skill_id"
         " WHERE sess.id = $1",
         body.session_id,
@@ -368,6 +391,8 @@ async def submit_session(body: SubmitRequest):
         practice_outcome=body.practice_outcome,
     )
     new_mastery = await _update_mastery(pool, skill_id, delta)
+    if session["sub_skill_id"] is not None:
+        await _update_sub_mastery(pool, session["sub_skill_id"], skill_id, delta)
 
     # Ask Gatekeeper if learner can progress.
     # Require at least 1 prior completed session (2 total) before unlocking —

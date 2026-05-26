@@ -973,13 +973,14 @@ function StudyHall({ setView, c, activeSkill, onComplete }) {
 
   useEffect(() => {
     if (!activeSkill) { setView("dashboard"); return; }
-    const subMastery = activeSkill.subMastery || [];
-    const lowestIdx  = subMastery.length ? subMastery.indexOf(Math.min(...subMastery)) : 0;
-    const topic      = (activeSkill.subs || [])[lowestIdx] || activeSkill.label;
+    const subMastery  = activeSkill.subMastery || [];
+    const lowestIdx   = subMastery.length ? subMastery.indexOf(Math.min(...subMastery)) : 0;
+    const topic       = (activeSkill.subs    || [])[lowestIdx] || activeSkill.label;
+    const subSkillId  = (activeSkill.subIds  || [])[lowestIdx] ?? null;
 
     apiFetch("/api/session/start", {
       method: "POST",
-      body: JSON.stringify({ skill_id: activeSkill.id, topic }),
+      body: JSON.stringify({ skill_id: activeSkill.id, sub_skill_id: subSkillId, topic }),
     })
       .then(d => { setSessionId(d.session_id); setLesson(d.lesson); setPhase("lesson"); })
       .catch(e => { setError(e.message); setPhase("error"); });
