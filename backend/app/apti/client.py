@@ -4,8 +4,23 @@ Each call: build prompt → call DeepSeek → validate schema → retry once on 
 """
 
 import json
+import re
 import httpx
 from typing import Any
+
+# JSON escape sequences that overlap with LaTeX commands:
+#   \f (form-feed)  → \frac, \forall, …
+#   \b (backspace)  → \begin, \beta, \bar, …
+#   \n (newline)    → \nabla, \neq, …
+#   \r (CR)         → \rho, \right, \rightarrow, …
+#   \t (tab)        → \theta, \text, \times, …
+# When the model writes \frac in a JSON string, json.loads converts \f to
+# the form-feed char (U+000C).  Fix: double the backslash before parsing.
+_LATEX_ESCAPE_RE = re.compile(r'(?<!\\)\\([bfnrt])(?=[a-zA-Z])')
+
+
+def _fix_latex_escapes(raw: str) -> str:
+    return _LATEX_ESCAPE_RE.sub(r'\\\\\1', raw)
 
 from app.db.connection import get_settings
 from app.apti.prompts import (
@@ -62,7 +77,7 @@ async def _call_deepseek(role_prompt: str, user_content: str, role: str) -> dict
         )
         resp.raise_for_status()
     raw = resp.json()["choices"][0]["message"]["content"]
-    return json.loads(raw)
+    return json.loads(_fix_latex_escapes(raw))
 
 
 async def _call_with_retry(role_prompt: str, user_content: str, role: str) -> dict[str, Any]:
