@@ -115,23 +115,43 @@ async def generate_lesson(
     return await _call_with_retry(LECTURER, user, "lecturer")
 
 
-def _trim_lesson_for_examiner(lesson: dict[str, Any]) -> dict[str, Any]:
+def _trim_lesson_for_examiner(lesson: Any) -> dict[str, Any]:
     """Strip verbose fields before sending the lesson to the Examiner.
     The full lesson JSON (all reasoning chains, hint lists, etc.) can push
-    the combined input past 4000 tokens, leaving no room for the quiz output."""
-    stages = lesson.get("stages", {})
+    the combined input past 4000 tokens, leaving no room for the quiz output.
+    Also handles the case where asyncpg returns JSONB as a JSON string."""
+    if isinstance(lesson, str):
+        try:
+            lesson = json.loads(lesson)
+        except (json.JSONDecodeError, ValueError):
+            return {"raw_lesson": lesson[:1500]}
+    if not isinstance(lesson, dict):
+        return {}
+
+    stages = lesson.get("stages") or {}
+    if not isinstance(stages, dict):
+        stages = {}
+
+    build = stages.get("build") or []
+    key_steps = []
+    for s in build:
+        if isinstance(s, dict):
+            key_steps.append({"step": s.get("step", ""), "why": s.get("why", "")})
+        elif isinstance(s, str):
+            key_steps.append({"step": s, "why": ""})
+
+    worked = stages.get("worked") or {}
+    worked_problem = worked.get("problem", "") if isinstance(worked, dict) else ""
+
     return {
-        "topic":       lesson.get("topic", ""),
-        "intuition":   stages.get("intuition", ""),
-        "analogy":     stages.get("analogy", ""),
-        "key_steps":   [
-            {"step": s.get("step", ""), "why": s.get("why", "")}
-            for s in stages.get("build", [])
-        ],
-        "worked_problem": (stages.get("worked") or {}).get("problem", ""),
-        "recall":      stages.get("recall", []),
-        "key_terms":   lesson.get("key_terms", []),
-        "watch_out":   lesson.get("watch_out", ""),
+        "topic":          lesson.get("topic", ""),
+        "intuition":      stages.get("intuition", ""),
+        "analogy":        stages.get("analogy", ""),
+        "key_steps":      key_steps,
+        "worked_problem": worked_problem,
+        "recall":         stages.get("recall") or [],
+        "key_terms":      lesson.get("key_terms") or [],
+        "watch_out":      lesson.get("watch_out", ""),
     }
 
 
