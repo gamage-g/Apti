@@ -41,7 +41,7 @@ def _model() -> str:
 # Grader/Gatekeeper/Scheduler at 0.0 (deterministic); Examiner 0.4; Lecturer/Cartographer 0.5.
 _ROLE_SETTINGS = {
     "lecturer":          {"temperature": 0.5, "max_tokens": 2200},
-    "examiner":          {"temperature": 0.4, "max_tokens": 1500},
+    "examiner":          {"temperature": 0.4, "max_tokens": 2000},
     "grader":            {"temperature": 0.0, "max_tokens": 1000},
     "cartographer":      {"temperature": 0.5, "max_tokens": 1000},
     "scheduler_advisor": {"temperature": 0.0, "max_tokens": 400},
@@ -77,6 +77,8 @@ async def _call_deepseek(role_prompt: str, user_content: str, role: str) -> dict
         )
         resp.raise_for_status()
     raw = resp.json()["choices"][0]["message"]["content"]
+    if not raw or not raw.strip():
+        raise json.JSONDecodeError("Empty response from model", "", 0)
     return json.loads(_fix_latex_escapes(raw))
 
 
@@ -113,6 +115,26 @@ async def generate_lesson(
     return await _call_with_retry(LECTURER, user, "lecturer")
 
 
+def _trim_lesson_for_examiner(lesson: dict[str, Any]) -> dict[str, Any]:
+    """Strip verbose fields before sending the lesson to the Examiner.
+    The full lesson JSON (all reasoning chains, hint lists, etc.) can push
+    the combined input past 4000 tokens, leaving no room for the quiz output."""
+    stages = lesson.get("stages", {})
+    return {
+        "topic":       lesson.get("topic", ""),
+        "intuition":   stages.get("intuition", ""),
+        "analogy":     stages.get("analogy", ""),
+        "key_steps":   [
+            {"step": s.get("step", ""), "why": s.get("why", "")}
+            for s in stages.get("build", [])
+        ],
+        "worked_problem": (stages.get("worked") or {}).get("problem", ""),
+        "recall":      stages.get("recall", []),
+        "key_terms":   lesson.get("key_terms", []),
+        "watch_out":   lesson.get("watch_out", ""),
+    }
+
+
 async def generate_quiz(
     topic: str,
     lesson: dict[str, Any],
@@ -123,7 +145,7 @@ async def generate_quiz(
     user = json.dumps({
         "subject": subject_id,
         "topic": topic,
-        "lesson": lesson,
+        "lesson": _trim_lesson_for_examiner(lesson),
         "recent_question_prompts": recent_question_prompts,
         "learner_notes": learner_notes,
     })
