@@ -114,18 +114,22 @@ async def _update_sub_mastery(pool, sub_skill_id: int, skill_id: str, delta: int
         UPDATE mastery
            SET score      = GREATEST(0, LEAST(100, score + $1)),
                updated_at = NOW()
-         WHERE sub_skill_id = $2
+         WHERE skill_id = $2 AND sub_skill_id = $3
         RETURNING score
         """,
-        delta, sub_skill_id,
+        delta, skill_id, sub_skill_id,
     )
     if row is None:
+        # The partial unique index is: ON mastery (skill_id, sub_skill_id)
+        # WHERE sub_skill_id IS NOT NULL — the WHERE must be echoed here or
+        # PostgreSQL raises 42P10 (no matching constraint).
         await pool.execute(
             """
             INSERT INTO mastery (skill_id, sub_skill_id, score)
             VALUES ($1, $2, GREATEST(0, LEAST(100, $3)))
-            ON CONFLICT (skill_id, sub_skill_id) DO UPDATE
-               SET score = GREATEST(0, LEAST(100, mastery.score + $3)), updated_at = NOW()
+            ON CONFLICT (skill_id, sub_skill_id) WHERE sub_skill_id IS NOT NULL
+            DO UPDATE SET score      = GREATEST(0, LEAST(100, mastery.score + $3)),
+                          updated_at = NOW()
             """,
             skill_id, sub_skill_id, delta,
         )

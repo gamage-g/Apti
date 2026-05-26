@@ -8,6 +8,12 @@ import re
 import httpx
 from typing import Any
 
+from app.db.connection import get_settings
+from app.apti.prompts import (
+    CONSTITUTION,
+    LECTURER, EXAMINER, GRADER, CARTOGRAPHER, SCHEDULER_ADVISOR, GATEKEEPER,
+)
+
 # JSON escape sequences that overlap with LaTeX commands:
 #   \f (form-feed)  → \frac, \forall, …
 #   \b (backspace)  → \begin, \beta, \bar, …
@@ -21,12 +27,6 @@ _LATEX_ESCAPE_RE = re.compile(r'(?<!\\)\\([bfnrt])(?=[a-zA-Z])')
 
 def _fix_latex_escapes(raw: str) -> str:
     return _LATEX_ESCAPE_RE.sub(r'\\\\\1', raw)
-
-from app.db.connection import get_settings
-from app.apti.prompts import (
-    CONSTITUTION,
-    LECTURER, EXAMINER, GRADER, CARTOGRAPHER, SCHEDULER_ADVISOR, GATEKEEPER,
-)
 
 
 DEEPSEEK_BASE = "https://api.deepseek.com/v1"

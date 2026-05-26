@@ -46,7 +46,10 @@ async def list_subjects():
     subjects = []
     for s in subject_rows:
         skills = skills_by_subject.get(s["id"], [])
-        mastery = round(sum(sk["mastery"] for sk in skills) / len(skills)) if skills else 0
+        # Average only over unlocked skills — locked skills are at 0 by definition
+        # and including them would make real progress appear invisible.
+        unlocked = [sk for sk in skills if not sk["locked"]]
+        mastery = round(sum(sk["mastery"] for sk in unlocked) / len(unlocked)) if unlocked else 0
         subjects.append({
             "id":           s["id"],
             "name":         s["name"],
