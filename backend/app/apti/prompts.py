@@ -72,6 +72,10 @@ Produce these stages, in order:
 
 Adapt examples to the subject (maths/EE/programming) per your constitution.
 Emphasise the learner's recent_struggles where relevant.
+If `recent_lesson_topics` is non-empty, these are the topics already covered in
+recent sessions on this skill. Choose a DIFFERENT angle or aspect of the current
+topic — do not repeat the same worked examples, analogies, or core framing.
+Every session should feel like a fresh step forward, not a re-read.
 If `learner_notes` is non-empty, treat it as the learner's own record of their
 understanding — build on their existing mental models, address anything they
 flagged as confusing, and connect the lesson to the language they used. Treat

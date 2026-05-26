@@ -75,6 +75,20 @@ async def _get_recent_question_prompts(pool, skill_id: str, limit: int = 20) -> 
     return [r["prompt"] for r in rows]
 
 
+async def _get_recent_lesson_topics(pool, skill_id: str, limit: int = 5) -> list[str]:
+    """Return the topics taught in the most recent completed sessions for this skill.
+    Passed to the Lecturer so it covers different angles rather than repeating."""
+    rows = await pool.fetch(
+        """
+        SELECT topic FROM sessions
+        WHERE skill_id = $1 AND completed_at IS NOT NULL
+        ORDER BY started_at DESC LIMIT $2
+        """,
+        skill_id, limit,
+    )
+    return [r["topic"] for r in rows]
+
+
 async def _get_mastery_score(pool, skill_id: str) -> int:
     row = await pool.fetchrow(
         "SELECT score FROM mastery WHERE skill_id = $1 AND sub_skill_id IS NULL",
@@ -201,10 +215,11 @@ async def start_session(body: StartRequest):
         SELECT s.id FROM skills s
         WHERE NOT {LOCKED_EXPR}
     """)
-    unlocked_ids = [r["id"] for r in unlocked]
-    recent_struggles = await _get_recent_struggles(pool, body.skill_id)
-    current_mastery  = await _get_mastery_score(pool, body.skill_id)
-    learner_notes    = await _get_learner_notes(pool, body.skill_id)
+    unlocked_ids      = [r["id"] for r in unlocked]
+    recent_struggles  = await _get_recent_struggles(pool, body.skill_id)
+    recent_topics     = await _get_recent_lesson_topics(pool, body.skill_id)
+    current_mastery   = await _get_mastery_score(pool, body.skill_id)
+    learner_notes     = await _get_learner_notes(pool, body.skill_id)
 
     # Call Apti Lecturer
     try:
@@ -214,6 +229,7 @@ async def start_session(body: StartRequest):
             learner_level=_learner_level(current_mastery),
             unlocked_skills=unlocked_ids,
             recent_struggles=recent_struggles,
+            recent_lesson_topics=recent_topics,
             subject_id=subject_id,
             learner_notes=learner_notes,
         )

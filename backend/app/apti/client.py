@@ -96,6 +96,7 @@ async def generate_lesson(
     learner_level: str,
     unlocked_skills: list[str],
     recent_struggles: list[str],
+    recent_lesson_topics: list[str] | None = None,
     subject_id: str = "mathematics",
     learner_notes: str = "",
 ) -> dict[str, Any]:
@@ -106,6 +107,7 @@ async def generate_lesson(
         "learner_level": learner_level,
         "unlocked_skills": unlocked_skills,
         "recent_struggles": recent_struggles,
+        "recent_lesson_topics": recent_lesson_topics or [],
         "learner_notes": learner_notes,
     })
     return await _call_with_retry(LECTURER, user, "lecturer")
