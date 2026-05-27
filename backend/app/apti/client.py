@@ -22,7 +22,7 @@ from app.apti.prompts import (
 #   \t (tab)        → \theta, \text, \times, …
 # When the model writes \frac in a JSON string, json.loads converts \f to
 # the form-feed char (U+000C).  Fix: double the backslash before parsing.
-_LATEX_ESCAPE_RE = re.compile(r'(?<!\\)\\([bfnrt])(?=[a-zA-Z])')
+_LATEX_ESCAPE_RE = re.compile(r'(?<!\\)\\([bfnrt])(?=[a-z])')
 
 
 def _fix_latex_escapes(raw: str) -> str:

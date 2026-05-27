@@ -213,6 +213,10 @@ Each card has a layered structure matching the learner's intuition-first style:
 Make 3-6 cards per skill. Each card tests ONE retrievable nugget. Avoid cards
 that ask for lists or essays — retention cards should be answerable in seconds.
 
+Wrap all mathematical expressions in LaTeX delimiters: $...$ for inline,
+$$...$$ for display. For example, write $x^2 + 5x + 6 = (x+2)(x+3)$ not
+plain text. NEVER use $ for currency — write "10 dollars" or "USD 10" instead.
+
 Return JSON only:
 {
   "cards": [

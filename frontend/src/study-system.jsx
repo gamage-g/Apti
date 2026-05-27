@@ -1667,8 +1667,10 @@ function Flashcards({ setView, c }) {
               <p className="body" style={{
                 fontSize:flip?19:24, lineHeight:1.6, color:c.ink,
                 fontFamily:flip?"'Newsreader',serif":"'Fraunces',serif",
-                fontWeight:flip?400:600, whiteSpace:"pre-line",
-              }}>{flip ? card.back : card.front}</p>
+                fontWeight:flip?400:600,
+              }}>
+                <MathText text={flip ? card.back : card.front} c={c} />
+              </p>
             </div>
 
             {flip && (
