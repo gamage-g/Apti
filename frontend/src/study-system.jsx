@@ -893,7 +893,9 @@ function MathText({ text, c, style = {} }) {
 
   const parts = [];
   // Split on display math $$...$$, inline math $...$, and fenced code blocks
-  const re = /(\$\$[\s\S]+?\$\$|\$[^$\n]+?\$|```[\w]*\n[\s\S]*?```)/g;
+  // Inline math $...$ must start with a non-digit, non-space character so
+  // that currency amounts like $10 or $1,000 are never mistaken for math.
+  const re = /(\$\$[\s\S]+?\$\$|\$(?=[^\s\d$\n])[^$\n]+?\$|```[\w]*\n[\s\S]*?```)/g;
   let last = 0;
   let m;
   while ((m = re.exec(text)) !== null) {
