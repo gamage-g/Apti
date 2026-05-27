@@ -944,7 +944,14 @@ function MathText({ text, c, style = {} }) {
             </pre>
           );
         }
-        return <span key={i}>{p.content}</span>;
+        // Handle both real newline chars and literal "\n" stored by older DB records
+        return (
+          <span key={i}>
+            {p.content.replace(/\\n/g, '\n').split('\n').map((line, j, arr) => (
+              <React.Fragment key={j}>{line}{j < arr.length - 1 && <br />}</React.Fragment>
+            ))}
+          </span>
+        );
       })}
     </span>
   );

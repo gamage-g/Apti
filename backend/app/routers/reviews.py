@@ -124,13 +124,15 @@ async def graduate_skill(body: GraduateRequest):
         raise HTTPException(502, f"Cartographer schema mismatch: {e}")
     cards = result.get("cards", [])
 
-    # Persist cards (upsert — safe to call again if re-graduating)
+    # Persist cards.
+    # DELETE all existing cards for this skill first so regeneration always
+    # replaces stale content (broken LaTeX, missing delimiters, etc.).
+    await pool.execute("DELETE FROM cards WHERE skill_id = $1", body.skill_id)
     for card in cards:
         await pool.execute(
             """
             INSERT INTO cards (id, skill_id, front, back, interval_days, due_date)
             VALUES ($1, $2, $3, $4, $5, CURRENT_DATE)
-            ON CONFLICT (id) DO NOTHING
             """,
             card["id"], body.skill_id, card["front"], card["back"],
             card.get("initial_interval_days", 1),
