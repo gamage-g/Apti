@@ -892,14 +892,17 @@ function MathText({ text, c, style = {} }) {
   if (!text) return null;
 
   const parts = [];
+  // Pre-process: strip currency dollar signs so $10, $1,000, $3.50 etc. are
+  // never mistaken for LaTeX math delimiters. A currency $ is always followed
+  // immediately by a digit; a math $ is followed by a letter, backslash, or
+  // other non-digit. Replace currency forms with the bare number.
+  const cleaned = text.replace(/\$(\d[\d,.]*)(?!\w)/g, '$1');
   // Split on display math $$...$$, inline math $...$, and fenced code blocks
-  // Inline math $...$ must start with a non-digit, non-space character so
-  // that currency amounts like $10 or $1,000 are never mistaken for math.
-  const re = /(\$\$[\s\S]+?\$\$|\$(?=[^\s\d$\n])[^$\n]+?\$|```[\w]*\n[\s\S]*?```)/g;
+  const re = /(\$\$[\s\S]+?\$\$|\$[^$\n]+?\$|```[\w]*\n[\s\S]*?```)/g;
   let last = 0;
   let m;
-  while ((m = re.exec(text)) !== null) {
-    if (m.index > last) parts.push({ type: "text", content: text.slice(last, m.index) });
+  while ((m = re.exec(cleaned)) !== null) {
+    if (m.index > last) parts.push({ type: "text", content: cleaned.slice(last, m.index) });
     const tok = m[0];
     if (tok.startsWith("$$")) {
       parts.push({ type: "display-math", content: tok.slice(2, -2).trim() });
@@ -913,7 +916,7 @@ function MathText({ text, c, style = {} }) {
     }
     last = m.index + tok.length;
   }
-  if (last < text.length) parts.push({ type: "text", content: text.slice(last) });
+  if (last < cleaned.length) parts.push({ type: "text", content: cleaned.slice(last) });
 
   return (
     <span style={style}>
