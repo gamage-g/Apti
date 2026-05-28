@@ -104,31 +104,25 @@ class GraduateRequest(BaseModel):
 
 @router.post("/skill/graduate")
 async def graduate_skill(body: GraduateRequest):
-    import traceback
     pool = get_pool()
 
-    try:
-        skill = await pool.fetchrow(
-            "SELECT id, label, subject_id FROM skills WHERE id = $1", body.skill_id
-        )
-        if not skill:
-            raise HTTPException(404, f"Skill '{body.skill_id}' not found")
+    skill = await pool.fetchrow(
+        "SELECT id, label, subject_id FROM skills WHERE id = $1", body.skill_id
+    )
+    if not skill:
+        raise HTTPException(404, f"Skill '{body.skill_id}' not found")
 
-        # Generate flashcards via Cartographer
-        result = await apti.generate_flashcards(
-            skill_id=body.skill_id,
-            skill_label=skill["label"],
-            subject_id=skill["subject_id"] or "mathematics",
-        )
-        try:
-            CartographerResponse.model_validate(result)
-        except Exception as e:
-            raise HTTPException(502, f"Cartographer schema mismatch: {e}")
-        cards = result.get("cards", [])
-    except HTTPException:
-        raise
+    # Generate flashcards via Cartographer
+    result = await apti.generate_flashcards(
+        skill_id=body.skill_id,
+        skill_label=skill["label"],
+        subject_id=skill["subject_id"] or "mathematics",
+    )
+    try:
+        CartographerResponse.model_validate(result)
     except Exception as e:
-        raise HTTPException(500, f"graduate_skill error: {traceback.format_exc()}")
+        raise HTTPException(502, f"Cartographer schema mismatch: {e}")
+    cards = result.get("cards", [])
 
     # Persist cards.
     # DELETE all existing cards for this skill first so regeneration always
