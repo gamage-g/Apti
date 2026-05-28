@@ -112,6 +112,20 @@ async def graduate_skill(body: GraduateRequest):
     if not skill:
         raise HTTPException(404, f"Skill '{body.skill_id}' not found")
 
+    # Refuse if the skill is not genuinely mastered (threshold: 70).
+    # Flashcards are a retention tool — they should only exist for knowledge
+    # the learner has already acquired through the study system.
+    mastery_row = await pool.fetchrow(
+        "SELECT score FROM mastery WHERE skill_id = $1 AND sub_skill_id IS NULL",
+        body.skill_id,
+    )
+    mastery = mastery_row["score"] if mastery_row else 0
+    if mastery < 70:
+        raise HTTPException(
+            403,
+            f"Skill '{body.skill_id}' has mastery {mastery}% — must reach 70% before graduating to flashcards.",
+        )
+
     # Generate flashcards via Cartographer
     result = await apti.generate_flashcards(
         skill_id=body.skill_id,
@@ -139,3 +153,15 @@ async def graduate_skill(body: GraduateRequest):
         )
 
     return {"cards": cards}
+
+
+# ─── DELETE /api/skill/cards/{skill_id} ──────────────────────────────────────
+
+@router.delete("/skill/cards/{skill_id}")
+async def delete_skill_cards(skill_id: str):
+    """Remove all flashcards for a skill (admin/cleanup use only)."""
+    pool = get_pool()
+    result = await pool.execute("DELETE FROM cards WHERE skill_id = $1", skill_id)
+    # result is a string like "DELETE 6"
+    count = int(result.split()[-1]) if result else 0
+    return {"deleted": count, "skill_id": skill_id}
