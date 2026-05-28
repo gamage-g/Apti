@@ -948,7 +948,7 @@ function MathText({ text, c, style = {} }) {
         return (
           <span key={i}>
             {p.content.replace(/\\n/g, '\n').split('\n').map((line, j, arr) => (
-              <React.Fragment key={j}>{line}{j < arr.length - 1 && <br />}</React.Fragment>
+              <span key={j}>{line}{j < arr.length - 1 && <br />}</span>
             ))}
           </span>
         );
